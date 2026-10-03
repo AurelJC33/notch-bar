@@ -901,8 +901,8 @@ function createNotchWindow() {
  * retrouver si la fenêtre a disparu. Clic gauche = ouvrir ; clic droit = menu.
  * Les deux PNG (16 px et 32 px pour les écrans à 200 %) sont embarqués ici en
  * base64 : rien de plus à livrer dans l'installeur. */
-const TRAY_ICON_16 = '__TRAY16__';
-const TRAY_ICON_32 = '__TRAY32__';
+const TRAY_ICON_16 = 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAQUlEQVR4nGMQEZH4TwlmwCXx9et3FEy0AegaCRnEQIpmbIYwkKoZ3RDqGECqZmRDhosBAx8LVElIVEnKVMlMpGIAAiTEMwwhXy4AAAAASUVORK5CYII=';
+const TRAY_ICON_32 = 'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAdUlEQVR4nO3XMRLAIAgEQB9Bkf//0bE0D0gUJDhcnCvoHG4rwCJy9cwqBKw8rrWZKhxgDfZAVIA33IoYAr4GWyGYgOjwGeIB2BU+QmABdoe/IQgggAACsADpoxgCkL6OIQ4SCEAUROuPf5Z7ICs9//U1OxJwA7/5vMej0oCHAAAAAElFTkSuQmCC';
 let tray = null;
 
 function buildTrayIcon() {
