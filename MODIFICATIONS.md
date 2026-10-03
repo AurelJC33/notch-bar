@@ -166,3 +166,12 @@ Validation: `npm run check` passes with 17/17 tests. Full `npm run test:browser`
 - Removed useless `will-change: width,height` on the capsule and `left,width,height` on the media notch.
 - Incoming views now start 90 ms after the outgoing one begins to fade, so they no longer overlap during the size transition.
 - Settings gear icon: the outline was centered on x = 12.9 while its inner circle and the button were centered on x = 12; the path is now centered.
+
+## v15 — System tray icon and a way to quit
+
+- Added a notification-area (tray) icon with an Open / Settings / Quit menu. Left click opens the notch. Open also re-centers the window and shows it again if it was hidden, so the app can always be found. The icon is embedded in main.js as base64 PNGs (16 px + 32 px for 200 % displays); nothing new to package.
+- Added a "Quit Notch" button at the bottom of Settings. It asks for a second click to confirm, like "Reset settings", and warns when a timer is active.
+- The tray icon is destroyed on quit so Windows does not keep a ghost icon.
+- Launching the app a second time now opens the notch instead of only re-showing a hidden window.
+- Settings opened from a compact state (tray, reminder, update banner) close back to the normal compact capsule.
+- Added tests/tray-quit.test.mjs.

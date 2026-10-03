@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, shell, nativeImage, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, shell, nativeImage, clipboard, Tray, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -895,6 +895,65 @@ function createNotchWindow() {
   screen.on('display-removed', reposition);
 }
 
+/* ---------------- Icône de la zone de notification ----------------
+ * Le notch n'a ni fenêtre classique ni bouton dans la barre des tâches
+ * (skipTaskbar) : sans cette icône, impossible de quitter l'app, ni de la
+ * retrouver si la fenêtre a disparu. Clic gauche = ouvrir ; clic droit = menu.
+ * Les deux PNG (16 px et 32 px pour les écrans à 200 %) sont embarqués ici en
+ * base64 : rien de plus à livrer dans l'installeur. */
+const TRAY_ICON_16 = '__TRAY16__';
+const TRAY_ICON_32 = '__TRAY32__';
+let tray = null;
+
+function buildTrayIcon() {
+  const image = nativeImage.createFromBuffer(Buffer.from(TRAY_ICON_16, 'base64'), { scaleFactor: 1 });
+  image.addRepresentation({ scaleFactor: 2, buffer: Buffer.from(TRAY_ICON_32, 'base64') });
+  return image;
+}
+
+function showNotchFromTray(command) {
+  if (!notchWin || notchWin.isDestroyed()) return;
+  // Retrouve le notch même s'il était masqué ou décalé (changement d'écran).
+  notchWin.setBounds(notchWindowBounds());
+  if (!notchWin.isVisible()) notchWin.show();
+  // Le menu de la zone de notification reprend le focus en se fermant : sans ce
+  // délai de grâce, le repli au clic extérieur refermerait aussitôt la vue
+  // qu'on vient d'ouvrir.
+  ignoreBlurUntil = Date.now() + 1500;
+  notchWin.focus();
+  notchWin.webContents.send('tray-command', command);
+}
+
+function createTray() {
+  if (tray) return;
+  try {
+    tray = new Tray(buildTrayIcon());
+  } catch (error) {
+    console.warn('[tray] icône indisponible :', error.message);
+    tray = null;
+    return;
+  }
+  tray.setToolTip('Notch Bar');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Notch Bar v' + app.getVersion(), enabled: false },
+    { type: 'separator' },
+    { label: 'Open', click: () => showNotchFromTray('open') },
+    { label: 'Settings', click: () => showNotchFromTray('settings') },
+    { type: 'separator' },
+    { label: 'Quit', click: () => app.quit() },
+  ]));
+  tray.on('click', () => showNotchFromTray('open'));
+}
+
+function destroyTray() {
+  // Sans destroy(), Windows garde une icône fantôme jusqu'au prochain survol.
+  if (tray && !tray.isDestroyed()) tray.destroy();
+  tray = null;
+}
+
+// Bouton « Quit Notch » des réglages (la confirmation se fait côté renderer).
+ipcMain.on('quit-app', () => app.quit());
+
 /* ---------------- IPC ----------------
  * Le panneau de réglages n'est plus une fenêtre Electron séparée : il vit
  * dans le même renderer que le notch, comme une vue de plus dans #capsule
@@ -1340,14 +1399,14 @@ ipcMain.handle('take-resume-state', () => {
 
 /* ---------------- Cycle de vie app ---------------- */
 app.on('second-instance', () => {
-  if (notchWin && !notchWin.isDestroyed()) {
-    if (!notchWin.isVisible()) notchWin.show();
-  }
+  // Relancer l'app alors qu'elle tourne déjà = « où est mon notch ? » : on l'ouvre.
+  showNotchFromTray('open');
 });
 
 app.whenReady().then(() => {
   if (!gotSingleInstanceLock) return;
   createNotchWindow();
+  createTray();
   setupUpdater();
   app.setLoginItemSettings({ openAtLogin: !!store.get('launchAtStartup') });
   startWeatherLoop();
@@ -1367,6 +1426,7 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   appIsQuitting = true;
+  destroyTray();
   clearInterval(mediaRecoveryTimer);
   mediaRecoveryTimer = null;
   if (updater) updater.stop();

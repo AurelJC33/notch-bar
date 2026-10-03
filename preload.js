@@ -22,6 +22,10 @@ contextBridge.exposeInMainWorld('api', {
   onUpdateState: (callback) => {
     ipcRenderer.on('update-state', (event, state) => callback(state));
   },
+  quitApp: () => ipcRenderer.send('quit-app'),
+  onTrayCommand: (callback) => {
+    ipcRenderer.on('tray-command', (event, command) => callback(command));
+  },
   getWeather: () => ipcRenderer.invoke('get-weather'),
   fetchICalUrl: (url) => ipcRenderer.invoke('fetch-ical-url', url),
   getMediaState: () => ipcRenderer.invoke('get-media-state'),

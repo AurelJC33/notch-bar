@@ -443,9 +443,11 @@ body.reduce-motion .switch-track::before{ transition:none; }
   color:var(--text);
 }
 
-.settings-footer{ flex:none; padding:10px 16px 14px; }
+.settings-footer{ flex:none; display:flex; flex-direction:column; gap:8px; padding:10px 16px 14px; }
 .settings-footer .btn{ width:100%; }
 .settings-footer .btn.danger-pending{ background:var(--red); color:#fff; border-color:transparent; }
+/* « Quit Notch » : discret au repos, rouge quand il attend la confirmation. */
+.settings-footer #btn-quit-app:not(.danger-pending){ color:var(--red); }
 
 /* ==================== SHELF ==================== */
 body.mode-shelf #view-shelf{

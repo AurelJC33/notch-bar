@@ -951,7 +951,9 @@ function populateSettingsUI(){
 let previousMode = 'pill';
 function openSettingsPanel(){
   if(mode === 'settings') return;
-  previousMode = mode;
+  // Depuis un état compact (pill, hover, rappel, bannière de mise à jour — cas de
+  // l'icône de notification), on revient à la capsule normale à la fermeture.
+  previousMode = OUTSIDE_COLLAPSIBLE_MODES.has(mode) ? mode : (activeTool ? 'running' : 'pill');
   requestWindowMode('notch');
   populateSettingsUI();
   setMode('settings');
@@ -963,6 +965,34 @@ function closeSettingsPanel(){
   setMode(target);
 }
 $('btn-close-settings').addEventListener('click', closeSettingsPanel);
+
+/* ---- icône de la zone de notification : Open / Settings ---- */
+if(window.api.onTrayCommand) window.api.onTrayCommand((command) => {
+  setWindowMouseIgnored(false);
+  if(command === 'settings') openSettingsPanel();
+  else if(!OUTSIDE_COLLAPSIBLE_MODES.has(mode)) openCurrentView();
+});
+
+/* ---- quitter l'app (second clic de confirmation, comme « Reset settings ») ---- */
+const quitBtn = $('btn-quit-app');
+let quitPending = false;
+let quitTimer = null;
+quitBtn.addEventListener('click', () => {
+  if(!quitPending){
+    quitPending = true;
+    quitBtn.textContent = activeTool ? 'Timer active: confirm quit' : 'Confirm quit';
+    quitBtn.classList.add('danger-pending');
+    clearTimeout(quitTimer);
+    quitTimer = setTimeout(() => {
+      quitPending = false;
+      quitBtn.textContent = 'Quit Notch';
+      quitBtn.classList.remove('danger-pending');
+    }, 3000);
+    return;
+  }
+  clearTimeout(quitTimer);
+  if(window.api.quitApp) window.api.quitApp();
+});
 document.addEventListener('keydown', (e) => {
   if(e.key === 'Escape' && mode === 'settings') closeSettingsPanel();
 });
