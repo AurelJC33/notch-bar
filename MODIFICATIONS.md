@@ -156,3 +156,13 @@ Validation: `npm run check` passes with 17/17 tests. Full `npm run test:browser`
 - Ajout de la classe CSS `.edge-accent` (le liseré « accent » des rappels calendrier n'avait pas de couleur définie).
 - Test local sans release : `NOTCH_FAKE_UPDATE=1` (voir RELEASING.md).
 - Tests : updater réécrit, nouveau `tests/resume-state.test.mjs` (validation, expiration, capture/restauration exécutées sur le vrai code du renderer).
+
+## v14 — Visual identity: conic border glow, shadow cleanup, centered settings icon
+
+- Replaced the SVG path + `requestAnimationFrame` edge light with a pure-CSS "animated border glow": two layers behind the notch surface (a sharp ring and a blurred glow), each driven by a rotating `conic-gradient`. `setEdge(color, kind)` keeps the same API (`spin` = rotating light, `pulse` = breathing contour) but only toggles classes now; color changes cross-fade through a registered `--edge-color` property.
+- `#capsule` no longer clips its own content: background, rounded corners and `overflow:hidden` moved to the new `#capsule-surface`, so the glow can overflow around the shape. The ring is hidden along the top edge (the notch is flush with the screen).
+- Removed every outer `box-shadow` / `drop-shadow` around the notch and the media companion. Cause of the grey, radius-less rectangle: the window is clipped by `setShape()` to a plain rectangle, so any shadow painted inside the rounded corners showed up as a grey square. The interactive region is now padded by `EDGE_GLOW_PAD` (24 px, sides and bottom) only while an edge glow is visible.
+- Audio accessory (Bluetooth) green halo and update/reminder glows now go through the same edge system.
+- Removed useless `will-change: width,height` on the capsule and `left,width,height` on the media notch.
+- Incoming views now start 90 ms after the outgoing one begins to fade, so they no longer overlap during the size transition.
+- Settings gear icon: the outline was centered on x = 12.9 while its inner circle and the button were centered on x = 12; the path is now centered.

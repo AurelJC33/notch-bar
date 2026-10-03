@@ -3,7 +3,14 @@
   --blue:#0a84ff; --red:#ff453a; --orange:#ff9f0a; --amber:#ffb340; --green:#30d158; --neutral:#9a9aa0;
   --accent:#0a84ff;
   --text:#f5f5f7; --sub:#98989d;
-  --radius:0 0 20px 20px;
+  --r:20px;                         /* rayon des coins du bas (le haut reste carré) */
+  --radius:0 0 var(--r) var(--r);
+
+  /* Liseré lumineux (voir #edge plus bas) */
+  --edge-w:2px;        /* épaisseur de l'anneau */
+  --edge-blur:9px;     /* flou du glow ; EDGE_GLOW_PAD (app.js) doit rester >= 2,5 x cette valeur */
+  --edge-size:1500px;  /* côté du calque tournant : > diagonale max de la capsule (~1390px) */
+  --edge-speed:3.6s;   /* durée d'un tour */
 
   /* Tailles cibles de la capsule par état. Le JS pose uniquement une
      classe mode-XXX ; l'enveloppe Electron reste fixe à la taille maximale,
@@ -35,22 +42,36 @@ html,body{
 body{ display:flex; justify-content:center; align-items:flex-start; }
 
 /* La capsule change de taille en CSS pur (transition sur width/height) :
-   plus aucun redimensionnement de fenêtre pendant le survol / le clic. */
+   plus aucun redimensionnement de fenêtre pendant le survol / le clic.
+
+   #capsule ne porte ni fond ni découpe : elle fixe la taille et la position
+   (et porte la translation du groupe média). Le fond arrondi et le clip du
+   contenu vivent dans #capsule-surface ; le liseré lumineux (#edge) est un
+   calque frère, derrière la surface, qui peut donc déborder proprement.
+
+   IMPORTANT — plus aucune box-shadow / drop-shadow autour de la capsule :
+   la fenêtre Electron est découpée par setShape() selon un RECTANGLE (voir
+   syncInteractiveRegion). Toute ombre ou lueur qui se dessine dans les coins
+   arrondis, à l'intérieur de ce rectangle, apparaît comme un rectangle gris
+   sans radius derrière le notch. Les lueurs passent par #edge, dont la zone
+   est ajoutée à la région interactive (EDGE_GLOW_PAD dans app.js). */
 #capsule{
-  position:relative; background:var(--bg); color:var(--text);
-  border-radius:var(--radius); overflow:hidden;
+  position:relative; color:var(--text);
   width:var(--w-pill); height:var(--h-pill);
   transition: width var(--capsule-dur) var(--capsule-ease),
               height var(--capsule-dur) var(--capsule-ease);
-  will-change:width,height;
   transform:translateZ(0);
+}
+#capsule-surface{
+  position:absolute; inset:0; z-index:2;
+  background:var(--bg);
+  border-radius:var(--radius); overflow:hidden;
 }
 body.mode-hover #capsule{ width:var(--w-hover); height:var(--h-hover); }
 body.mode-expanded #capsule{ width:var(--w-expanded); height:var(--h-expanded); }
 body.mode-analytics #capsule{ width:var(--w-expanded); height:var(--h-expanded); }
 body.mode-reminder #capsule{
   width:min(var(--reminder-width, 420px),92vw); height:28px;
-  box-shadow:0 0 10px color-mix(in srgb,var(--accent) 18%,transparent), 0 0 28px color-mix(in srgb,var(--accent) 12%,transparent);
 }
 body.mode-analytics-expanded #capsule{ width:var(--w-schedule); height:var(--h-schedule); }
 body.mode-shelf #capsule{ width:min(var(--w-shelf),100vw); height:min(var(--h-shelf),100vh); }
@@ -59,80 +80,73 @@ body.mode-settings #capsule{ width:min(var(--w-settings),100vw); height:min(var(
 body.mode-schedule #capsule{ width:var(--w-schedule); height:var(--h-schedule); }
 body.mode-pill[data-accessory-state="visible"] #capsule{
   width:var(--w-pill-device); height:var(--h-pill-device);
-  box-shadow:0 0 26px rgba(48,209,88,.18), 0 0 52px rgba(48,209,88,.1);
 }
 body.mode-update #capsule{
   width:var(--w-update); height:var(--h-update);
-  box-shadow:0 0 12px color-mix(in srgb,var(--accent) 24%,transparent), 0 0 32px color-mix(in srgb,var(--accent) 14%,transparent);
-  animation:update-glow 2.4s ease-out 1; /* lueur courte à l'apparition, puis halo discret */
 }
-@keyframes update-glow{
-  0%{ box-shadow:0 0 0 transparent, 0 0 0 transparent; }
-  22%{ box-shadow:0 0 20px color-mix(in srgb,var(--accent) 65%,transparent), 0 0 52px color-mix(in srgb,var(--accent) 38%,transparent); }
-  100%{ box-shadow:0 0 12px color-mix(in srgb,var(--accent) 24%,transparent), 0 0 32px color-mix(in srgb,var(--accent) 14%,transparent); }
-}
-body.reduce-motion.mode-update #capsule{ animation:none; }
 body.reduce-motion #capsule{ transition:none; }
 
-/* ---- ligne de lumière qui trace le contour réel de la capsule ----
-   Un <path> SVG est recalculé en JS pour épouser exactement le pourtour
-   (coins carrés en haut, arrondis en bas) de #capsule, quelle que soit sa
-   taille. En mode "spin" un segment lumineux progresse le long de ce
-   tracé (via stroke-dasharray/dashoffset) ; en mode "pulse" c'est tout
-   le contour qui respire en opacité. */
-#edge{
-  position:absolute; inset:0; z-index:5; pointer-events:none;
-  overflow:visible; opacity:0; transition:opacity .3s ease;
-}
-#edge.on{ opacity:.8; }
+/* ---- liseré lumineux : "animated border glow" en conic-gradient ----
+   Deux calques identiques, posés DERRIÈRE #capsule-surface :
+     .edge-ring  net : il dessine le trait de --edge-w autour de la capsule ;
+     .edge-glow  identique mais flouté : c'est la lueur qui déborde.
+   Dans chaque calque, un pseudo-élément très grand tourne sur lui-même avec un
+   conic-gradient transparent -> couleur -> transparent. Seul le quart lumineux
+   qui passe sous le bord du calque est visible (overflow:hidden + radius).
+   La surface opaque recouvre le centre : seul l'anneau dépasse, donc pas de
+   masque à poser. Le haut reste collé au bord de l'écran : le liseré n'apparaît
+   que sur les côtés et le dessous, comme une encoche qui s'illumine.
+   Modes (classes posées par setEdge() dans app.js) :
+     .spin   le quart lumineux fait le tour de la capsule
+     .pulse  tout le contour respire en opacité */
+@property --edge-color{ syntax:'<color>'; inherits:true; initial-value:rgba(0,0,0,0); }
 
-/* Halo coloré, plus large et flou : c'est la lueur autour de la lumière.
-   Opacité et flou réduits par rapport à avant pour rester discret. */
-#edge-path{
-  fill:none; stroke:var(--edge-color); stroke-width:1.6; stroke-linecap:round;
-  stroke-opacity:.55;
-  filter:drop-shadow(0 0 4px var(--edge-color));
-  animation:edge-flicker 3.7s ease-in-out infinite;
+#edge{
+  position:absolute; z-index:0; pointer-events:none;
+  inset:0 calc(-1 * var(--edge-w)) calc(-1 * var(--edge-w));
+  opacity:0;
+  transition:opacity .35s ease, --edge-color .5s ease;
 }
-/* Cœur blanc, fin et net, superposé au halo : donne l'impression d'un
-   vrai filament lumineux (blanc au centre, couleur autour) plutôt qu'un
-   trait uniforme. Durée de scintillement différente et sens inversé par
-   rapport au halo pour que les deux se désynchronisent naturellement. */
-#edge-path-core{
-  fill:none; stroke:#fff; stroke-width:.8; stroke-linecap:round;
-  stroke-opacity:.8;
-  filter:drop-shadow(0 0 1.5px rgba(255,255,255,.85));
-  animation:edge-flicker 4.3s ease-in-out infinite reverse;
+#edge.on{ opacity:1; }
+
+.edge-box{
+  position:absolute; inset:0; overflow:hidden; isolation:isolate;
+  border-radius:0 0 calc(var(--r) + var(--edge-w)) calc(var(--r) + var(--edge-w));
 }
-#edge.pulse #edge-path{ animation:edge-pulse 2.1s ease-in-out infinite, edge-flicker 3.7s ease-in-out infinite; }
-#edge.pulse #edge-path-core{ animation:edge-pulse-core 2.1s ease-in-out infinite, edge-flicker 4.3s ease-in-out infinite reverse; }
+.edge-glow{ filter:blur(var(--edge-blur)); opacity:.75; }
+
+.edge-box::before{
+  content:''; position:absolute; top:50%; left:50%;
+  width:var(--edge-size); height:var(--edge-size);
+  transform:translate(-50%,-50%) rotate(0deg);
+  background-image:conic-gradient(rgba(0,0,0,0), var(--edge-color), rgba(0,0,0,0) 25%);
+  animation:edge-rotate var(--edge-speed) linear infinite;
+}
+@keyframes edge-rotate{ to{ transform:translate(-50%,-50%) rotate(1turn); } }
+
+/* Mode "pulse" (Timer, Stopwatch, rappels) : anneau plein qui respire.
+   Le halo vert de l'accessoire audio (notch replié) utilise le même rendu. */
+body.mode-pill #edge[data-accessory="on"]:not(.on){ opacity:1; --edge-color:var(--green); }
+:is(#edge.pulse, body.mode-pill #edge[data-accessory="on"]:not(.on)) .edge-box::before{
+  animation:none;
+  background-image:conic-gradient(var(--edge-color), var(--edge-color));
+}
+:is(#edge.pulse, body.mode-pill #edge[data-accessory="on"]:not(.on)) .edge-ring{ animation:edge-breathe-ring 2.1s ease-in-out infinite; }
+:is(#edge.pulse, body.mode-pill #edge[data-accessory="on"]:not(.on)) .edge-glow{ animation:edge-breathe-glow 2.1s ease-in-out infinite; }
+@keyframes edge-breathe-ring{ 0%,100%{ opacity:.4; } 50%{ opacity:1; } }
+@keyframes edge-breathe-glow{ 0%,100%{ opacity:.18; } 50%{ opacity:.75; } }
+
 .edge-orange{ --edge-color:var(--orange); }
 .edge-blue{ --edge-color:var(--blue); }
 .edge-green{ --edge-color:var(--green); }
 .edge-amber{ --edge-color:var(--amber); }
 .edge-neutral{ --edge-color:var(--neutral); }
-@keyframes edge-pulse{ 0%,100%{ stroke-opacity:.22; } 50%{ stroke-opacity:.7; } }
-@keyframes edge-pulse-core{ 0%,100%{ stroke-opacity:.4; } 50%{ stroke-opacity:.9; } }
-/* Scintillement irrégulier : paliers non uniformes + durées (3.7s / 4.3s)
-   qui ne "tombent pas rond" avec les boucles de spin (2.6s) ou de pulse
-   (2.1s), pour que le motif ne se répète jamais à l'identique — plus
-   proche d'une vraie lumière que d'un simple va-et-vient mécanique. */
-@keyframes edge-flicker{
-  0%   { opacity:.8; }
-  7%   { opacity:.6; }
-  18%  { opacity:.95; }
-  26%  { opacity:.68; }
-  39%  { opacity:.9; }
-  52%  { opacity:.58; }
-  64%  { opacity:.85; }
-  77%  { opacity:.7; }
-  89%  { opacity:.92; }
-  100% { opacity:.8; }
-}
-body.reduce-motion #edge-path,
-body.reduce-motion #edge-path-core{ animation:none !important; }
-body.reduce-motion #edge.pulse #edge-path{ stroke-opacity:.5; }
-body.reduce-motion #edge.pulse #edge-path-core{ stroke-opacity:.7; }
+
+/* Mouvement réduit : rotation plus lente, pas de respiration. */
+body.reduce-motion #edge{ transition:none; }
+body.reduce-motion #edge .edge-box::before{ animation-duration:7s; }
+body.reduce-motion :is(#edge.pulse, body.mode-pill #edge[data-accessory="on"]:not(.on)) .edge-ring{ animation:none; opacity:.85; }
+body.reduce-motion :is(#edge.pulse, body.mode-pill #edge[data-accessory="on"]:not(.on)) .edge-glow{ animation:none; opacity:.45; }
 
 /* ---- vues : empilées, ancrées en haut, crossfade doux ----
    On anime aussi un léger scale/translateY en plus de l'opacité : un
@@ -143,8 +157,11 @@ body.reduce-motion #edge.pulse #edge-path-core{ stroke-opacity:.7; }
   position:absolute; top:0; left:0; width:100%;
   display:flex; opacity:0; pointer-events:none;
   transform:translateY(-4px) scale(.98);
-  transition: opacity .22s ease,
-              transform .28s var(--capsule-ease);
+  /* La vue qui apparaît attend --view-delay (posé uniquement sur l'état actif) :
+     l'ancienne vue a le temps de s'effacer, les deux ne se superposent plus. */
+  --view-delay:0s;
+  transition: opacity .2s ease var(--view-delay),
+              transform .3s var(--capsule-ease) var(--view-delay);
 }
 body.mode-pill .view#view-pill,
 body.mode-hover .view#view-hover,
@@ -152,16 +169,16 @@ body.mode-expanded .view#view-expanded,
 body.mode-reminder .view#view-reminder,
 body.mode-running .view#view-running,
 body.mode-settings .view#view-settings{
-  opacity:1; pointer-events:auto; transform:translateY(0) scale(1);
+  opacity:1; pointer-events:auto; transform:translateY(0) scale(1); --view-delay:.09s;
 }
 body.mode-schedule .view#view-expanded{
-  opacity:1; pointer-events:auto; transform:translateY(0) scale(1);
+  opacity:1; pointer-events:auto; transform:translateY(0) scale(1); --view-delay:.09s;
 }
 body.mode-analytics .view#view-expanded,
 body.mode-analytics-expanded .view#view-expanded{
-  opacity:1; pointer-events:auto; transform:translateY(0) scale(1);
+  opacity:1; pointer-events:auto; transform:translateY(0) scale(1); --view-delay:.09s;
 }
-body.mode-update .view#view-update{ opacity:1; pointer-events:auto; transform:translateY(0) scale(1); }
+body.mode-update .view#view-update{ opacity:1; pointer-events:auto; transform:translateY(0) scale(1); --view-delay:.09s; }
 body.reduce-motion .view{ transition:none; }
 
 .icon{ width:15px; height:15px; flex:none; }
@@ -176,7 +193,7 @@ body.mode-pill[data-accessory-state="visible"] #view-pill{
 .pill-accessory{ display:none; align-items:center; width:100%; gap:10px; color:var(--green); min-width:0; }
 body[data-accessory-state="visible"] .pill-default{ display:none; }
 body[data-accessory-state="visible"] .pill-accessory{ display:flex; }
-.pill-accessory .icon{ width:18px; height:18px; color:#fff; filter:drop-shadow(0 0 10px rgba(48,209,88,.25)); }
+.pill-accessory .icon{ width:18px; height:18px; color:#fff; }
 .pill-accessory-name{ flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12.5px; font-weight:600; letter-spacing:.01em; color:var(--text); text-shadow:0 0 18px rgba(48,209,88,.18); }
 .pill-accessory-battery{ flex:none; font-size:12px; font-weight:700; color:var(--green); text-shadow:0 0 16px rgba(48,209,88,.5); }
 .pill-time{ font-size:12px; font-weight:600; color:var(--text); font-variant-numeric:tabular-nums; letter-spacing:.02em; }
@@ -2314,14 +2331,12 @@ body.reduce-motion #capsule{ transition:none; }
   background:var(--bg);
   color:var(--text);
   overflow:hidden;
-  box-shadow:0 8px 22px rgba(0,0,0,.24);
   transform:translateZ(0);
   transition:left .42s var(--capsule-ease),
              width .42s var(--capsule-ease),
              height .42s var(--capsule-ease),
              border-radius .3s ease,
              opacity .2s ease;
-  will-change:left,width,height;
 }
 #media-notch[hidden]{ display:none; }
 body[data-media-state="expanded"] #media-notch{

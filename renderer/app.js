@@ -91,21 +91,25 @@ function setWindowMouseIgnored(ignore, options) {
   if(!windowShapeSupported) window.api.setIgnoreMouseEvents(ignore, options);
 }
 
-function rectForInput(el) {
+function rectForInput(el, pad = 0) {
   if(!el || el.hidden) return null;
   const rect = el.getBoundingClientRect();
   if(rect.width < 1 || rect.height < 1) return null;
+  const left = Math.floor(rect.left);
+  // pad : marge ajoutée à gauche, à droite et en dessous (jamais en haut, le
+  // notch est collé au bord de l'écran) pour laisser passer le glow du liseré.
+  const x = Math.max(0, left - pad);
   return {
-    x: Math.max(0, Math.floor(rect.left)),
+    x,
     y: Math.max(0, Math.floor(rect.top)),
-    width: Math.ceil(rect.width),
-    height: Math.ceil(rect.height),
+    width: Math.ceil(rect.width) + (left - x) + pad,
+    height: Math.ceil(rect.height) + pad,
   };
 }
 
 function syncInteractiveRegion() {
   if(!windowShapeSupported || !window.api.setInteractiveRegion) return;
-  const rects = [rectForInput(capsuleEl)];
+  const rects = [rectForInput(capsuleEl, edgePad)];
   const media = $('media-notch');
   if(media && !media.hidden) rects.push(rectForInput(media));
   window.api.setInteractiveRegion(rects.filter(Boolean));
@@ -477,130 +481,60 @@ const soundPlayer = window.SoundEngine.createSoundPlayer({
 soundPlayer.preload();
 function playSound(name, options){ return soundPlayer.play(name, options); }
 
-/* ==================== LIGNE DE LUMIÈRE QUI SUIT LE CONTOUR ====================
-   Le rectangle a des coins carrés en haut et arrondis en bas (comme la
-   capsule elle-même, voir --radius dans le CSS). On dessine ce contour
-   exact en SVG et on fait progresser un segment lumineux le long de ce
-   tracé (stroke-dasharray/stroke-dashoffset), à vitesse constante en
-   pixels : la lumière suit donc réellement la forme, sans "sauter" du
-   centre vers les côtés comme le faisait l'ancien dégradé conique. */
-const EDGE = $('edge');
-const EDGE_PATH = $('edge-path');
-const EDGE_PATH_CORE = $('edge-path-core'); // le filament blanc, superposé au halo coloré
-const EDGE_STROKE = 2;      // px
-const CORNER_RADIUS = 20;   // doit correspondre à --radius dans style.css
-const SEGMENT_RATIO = 0.16; // portion du pourtour occupée par le segment lumineux (plus discret qu'avant)
-const CORE_SEGMENT_RATIO = 0.5; // longueur du cœur blanc, en proportion du segment coloré, centré dedans
+/* ==================== LISERÉ LUMINEUX (border glow) ====================
+   Tout le rendu est en CSS (voir #edge dans style.css) : un anneau net et un
+   calque flou, tous deux animés par un conic-gradient rotatif. Le JS se
+   contente de choisir la couleur et le mode : plus de tracé SVG recalculé à
+   chaque frame de la transition de taille, plus de requestAnimationFrame.
 
-let edgePerimeter = 0;
-let edgeRAF = null;
-let edgeSpinStart = null;
+   La fenêtre est découpée par setShape() (région interactive = rectangle de
+   la capsule). Le glow débordant autour de la capsule, on élargit cette région
+   de EDGE_GLOW_PAD px (côtés + dessous) tant qu'un liseré est visible, sinon il
+   serait rogné en rectangle. Garder EDGE_GLOW_PAD >= 2,5 x --edge-blur. */
+const EDGE = $('edge');
+const EDGE_GLOW_PAD = 24; // px
 let edgeKind = null;
 let edgeColor = null;
-let coreOffsetShift = 0; // décalage constant (px) pour centrer le cœur dans le segment coloré
+let edgePad = 0;
+let edgePadTimer = null;
+let accessoryGlow = false;
 
-function clampRadii(w, h, tl, tr, br, bl){
-  const edges = [
-    (tl + tr) > 0 ? w / (tl + tr) : Infinity,
-    (bl + br) > 0 ? w / (bl + br) : Infinity,
-    (tl + bl) > 0 ? h / (tl + bl) : Infinity,
-    (tr + br) > 0 ? h / (tr + br) : Infinity,
-  ];
-  const f = Math.min(1, ...edges);
-  return [tl * f, tr * f, br * f, bl * f];
+function setEdgePad(pad){
+  if(edgePad === pad) return;
+  edgePad = pad;
+  syncInteractiveRegion();
 }
 
-function roundedRectPath(x, y, w, h, tl, tr, br, bl){
-  [tl, tr, br, bl] = clampRadii(w, h, tl, tr, br, bl);
-  return `M ${x + tl} ${y} H ${x + w - tr} A ${tr} ${tr} 0 0 1 ${x + w} ${y + tr} `
-       + `V ${y + h - br} A ${br} ${br} 0 0 1 ${x + w - br} ${y + h} `
-       + `H ${x + bl} A ${bl} ${bl} 0 0 1 ${x} ${y + h - bl} `
-       + `V ${y + tl} A ${tl} ${tl} 0 0 1 ${x + tl} ${y} Z`;
-}
-
-function applyDash(){
-  const seg = edgePerimeter * SEGMENT_RATIO;
-  EDGE_PATH.style.strokeDasharray = `${seg} ${Math.max(0, edgePerimeter - seg)}`;
-
-  // Le cœur blanc est un segment plus court que le halo coloré, avec le
-  // même pas total (perimeter) dans son dasharray : à décalage identique,
-  // son "on" démarre donc au même endroit que celui du halo. On ajoute un
-  // décalage constant (coreOffsetShift) pour le recentrer dans le segment
-  // coloré plutôt que de le laisser collé à son bord de tête.
-  const coreSeg = seg * CORE_SEGMENT_RATIO;
-  EDGE_PATH_CORE.style.strokeDasharray = `${coreSeg} ${Math.max(0, edgePerimeter - coreSeg)}`;
-  coreOffsetShift = (seg - coreSeg) / 2;
-}
-
-function updateEdgeGeometry(w, h){
-  if(w < 4 || h < 4) return;
-  EDGE.setAttribute('width', w);
-  EDGE.setAttribute('height', h);
-  EDGE.setAttribute('viewBox', `0 0 ${w} ${h}`);
-  const inset = EDGE_STROKE / 2;
-  const r = Math.max(0, CORNER_RADIUS - inset);
-  const d = roundedRectPath(inset, inset, w - EDGE_STROKE, h - EDGE_STROKE, 0, 0, r, r);
-  EDGE_PATH.setAttribute('d', d);
-  EDGE_PATH_CORE.setAttribute('d', d);
-  edgePerimeter = EDGE_PATH.getTotalLength();
-  if(edgeKind === 'spin') applyDash();
-}
-
-/* La capsule change maintenant de taille en CSS (transition width/height),
-   plus par un vrai redimensionnement de la fenêtre OS : l'event "resize"
-   de window ne se déclenche donc plus jamais pendant l'animation, ce qui
-   laissait le tracé SVG bloqué à sa taille initiale (donc invisible ou
-   mal placé une fois la capsule agrandie). Un ResizeObserver sur #capsule
-   elle-même se déclenche à chaque frame pendant la transition CSS, quelle
-   qu'en soit la cause : c'est la bonne source de vérité ici. */
-const edgeResizeObserver = new ResizeObserver((entries) => {
-  const box = entries[0].contentRect;
-  updateEdgeGeometry(box.width, box.height);
-});
-edgeResizeObserver.observe(capsuleEl);
-
-function stopEdgeSpin(){
-  if(edgeRAF){ cancelAnimationFrame(edgeRAF); edgeRAF = null; }
-  edgeSpinStart = null;
-}
-function edgeSpinStep(ts){
-  if(!edgeSpinStart) edgeSpinStart = ts;
-  const elapsed = (ts - edgeSpinStart) / 1000;
-  const loopDuration = settings.reduceMotion ? 6 : 2.6; // secondes pour un tour complet
-  const speed = edgePerimeter / loopDuration;           // px/s
-  const offset = -((elapsed * speed) % edgePerimeter);
-  EDGE_PATH.style.strokeDashoffset = offset;
-  EDGE_PATH_CORE.style.strokeDashoffset = offset - coreOffsetShift;
-  edgeRAF = requestAnimationFrame(edgeSpinStep);
+function refreshEdgePad(){
+  clearTimeout(edgePadTimer);
+  if(edgeColor || accessoryGlow){
+    setEdgePad(EDGE_GLOW_PAD);
+  } else {
+    // On attend la fin du fondu (.35 s) avant de rendre la marge au clic-au-travers.
+    edgePadTimer = setTimeout(() => setEdgePad(0), 450);
+  }
 }
 
 function setEdge(color, kind){
   // color: orange | blue | green | amber | neutral | accent | null   kind: 'spin' | 'pulse'
   edgeColor = color || null;
-  edgeKind = kind || null;
-  if(!color){
-    // #edge est un <svg> : .className y est un SVGAnimatedString, pas une
-    // chaîne — une simple affectation ne fait rien. setAttribute fonctionne
-    // aussi bien sur les éléments HTML que SVG.
-    EDGE.setAttribute('class', '');
-    stopEdgeSpin();
-    return;
-  }
-  EDGE.setAttribute('class', `on ${kind} edge-${color}`);
-  if(kind === 'spin'){
-    applyDash();
-    stopEdgeSpin();
-    edgeRAF = requestAnimationFrame(edgeSpinStep);
-  } else {
-    stopEdgeSpin();
-    EDGE_PATH.style.strokeDasharray = 'none';
-    EDGE_PATH.style.strokeDashoffset = '0';
-    EDGE_PATH_CORE.style.strokeDasharray = 'none';
-    EDGE_PATH_CORE.style.strokeDashoffset = '0';
-  }
+  edgeKind = color ? (kind || 'pulse') : null;
+  // #edge est un <div> : on pose les classes d'un bloc. Une valeur identique ne
+  // relance pas l'animation CSS, la rotation continue donc sans à-coup quand
+  // plusieurs tick consécutifs rappellent setEdge avec les mêmes paramètres.
+  const next = edgeColor ? ('on ' + edgeKind + ' edge-' + edgeColor) : '';
+  if(EDGE.getAttribute('class') !== next) EDGE.setAttribute('class', next);
+  refreshEdgePad();
 }
-// (pas besoin d'appel initial : observe() ci-dessus déclenche déjà une
-// première mesure dès qu'il est enregistré, avec la taille de départ.)
+
+// Halo vert de l'accessoire audio (notch replié). Attribut dédié : il ne
+// touche pas aux classes de setEdge, donc aucun état à sauvegarder / restaurer.
+function setEdgeAccessoryGlow(on){
+  accessoryGlow = !!on;
+  if(accessoryGlow) EDGE.setAttribute('data-accessory', 'on');
+  else EDGE.removeAttribute('data-accessory');
+  refreshEdgePad();
+}
 
 /* ==================== HORLOGE ==================== */
 function renderClock(){
@@ -2156,6 +2090,7 @@ function hideAudioAccessoryNotification(restoreMedia = true){
   if(!audioAccessoryNotificationActive) return;
   audioAccessoryNotificationActive = false;
   body.dataset.accessoryState = 'hidden';
+  setEdgeAccessoryGlow(false);
   if(restoreMedia && mediaExpandedBeforeAccessoryNotification && mediaState.available){
     mediaExpandedBeforeAccessoryNotification = false;
     setMediaExpanded(true);
@@ -2172,6 +2107,7 @@ function showAudioAccessoryNotification(){
   // Collapse it for the notification lifetime, then restore it once.
   if(mediaExpanded) setMediaExpanded(false);
   body.dataset.accessoryState = 'visible';
+  setEdgeAccessoryGlow(true);
   audioAccessoryNotificationTimer = setTimeout(() => {
     hideAudioAccessoryNotification(true);
   }, 3000);

@@ -9,10 +9,17 @@
 <body>
 
   <div id="capsule">
-    <svg id="edge" xmlns="http://www.w3.org/2000/svg">
-      <path id="edge-path" fill="none"></path>
-      <path id="edge-path-core" fill="none"></path>
-    </svg>
+    <!-- Liseré lumineux (conic-gradient) : un calque flou (glow) + un anneau net,
+         posés derrière la surface. Tout se pilote en CSS, voir #edge dans style.css. -->
+    <div id="edge" aria-hidden="true">
+      <div class="edge-box edge-glow"></div>
+      <div class="edge-box edge-ring"></div>
+    </div>
+
+    <!-- Surface visible du notch : fond, coins arrondis et découpe du contenu.
+         #capsule garde la taille / le positionnement, ce qui permet au liseré
+         de déborder autour sans être rogné par overflow:hidden. -->
+    <div id="capsule-surface">
 
     <!-- État replié : horloge + météo -->
     <div class="view" id="view-pill">
@@ -509,6 +516,7 @@
     </div>
 
         <div class="planner-toast" id="planner-toast" role="status" aria-live="polite"></div>
+    </div><!-- /#capsule-surface -->
   </div>
 
   <!-- System media companion notch. It stays separate from #capsule so the
