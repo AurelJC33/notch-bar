@@ -1,0 +1,19 @@
+{
+  "audioEndpoints": [
+    {
+      "Status": "OK",
+      "FriendlyName": "Speakers (JBL Tune 760NC Stereo)",
+      "InstanceId": "SWD\\MMDEVAPI\\{fixture-endpoint}",
+      "ContainerId": "{fixture-container}"
+    }
+  ],
+  "bluetoothDevices": [
+    {
+      "Status": "OK",
+      "FriendlyName": "JBL Tune 760NC",
+      "InstanceId": "BTH\\DEV_fixture",
+      "ContainerId": "{fixture-container}",
+      "BatteryPercent": 73
+    }
+  ]
+}

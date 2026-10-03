@@ -1,0 +1,16 @@
+<!--
+  Reference fragment for a future MSIX/AppX package.
+  The current Electron build target is NSIS (classic/unpackaged Win32), so
+  this AppX capability is not consumed by the NSIS installer itself.
+
+  In a packaged build, merge the uap7 namespace into <Package> and the
+  capability below into <Capabilities>.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap7="http://schemas.microsoft.com/appx/manifest/uap/windows10/7"
+  IgnorableNamespaces="uap7">
+  <Capabilities>
+    <uap7:Capability Name="globalMediaControl" />
+  </Capabilities>
+</Package>

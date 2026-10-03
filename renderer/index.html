@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src https://ipapi.co https://ipwho.is http://ip-api.com https://api.open-meteo.com">
+<title>Notch Bar</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div id="capsule">
+    <svg id="edge" xmlns="http://www.w3.org/2000/svg">
+      <path id="edge-path" fill="none"></path>
+      <path id="edge-path-core" fill="none"></path>
+    </svg>
+
+    <!-- État replié : horloge + météo -->
+    <div class="view" id="view-pill">
+      <div class="pill-default" id="pill-default">
+        <span class="pill-time" id="pill-time">--:--</span>
+        <span class="pill-sep"></span>
+        <span class="pill-weather">
+          <span class="icon" id="pill-weather-icon" data-icon="weather-clear"></span>
+          <span class="pill-temp" id="pill-temp">--°</span>
+        </span>
+      </div>
+      <button class="shelf-pill-badge" id="shelf-pill-badge" type="button" hidden title="Open shelf" aria-label="Open shelf">
+        <span class="icon" data-icon="shelf"></span><span id="shelf-pill-count">0</span>
+      </button>
+      <div class="pill-accessory" id="pill-accessory" aria-live="polite">
+        <span class="pill-accessory-icon icon" id="pill-accessory-icon" data-icon="headphones"></span>
+        <span class="pill-accessory-name" id="pill-accessory-name">Audio device</span>
+        <span class="pill-accessory-battery" id="pill-accessory-battery">--%</span>
+      </div>
+    </div>
+
+    <!-- Hover state: uniquement les pages épinglées. -->
+    <div class="view" id="view-hover">
+      <div class="hover-pages" id="hover-pages" aria-label="Pinned pages"></div>
+      <button class="hover-shortcut shelf-hover-shortcut" id="shelf-hover-shortcut" type="button" title="Shelf" aria-label="Shelf" hidden>
+        <span class="icon" data-icon="shelf"></span><span class="hover-count" id="shelf-hover-count">0</span>
+      </button>
+    </div>
+
+    <!-- État agrandi : onglets + contenu -->
+    <div class="view" id="view-expanded">
+      <div class="topbar">
+        <div class="tabs">
+          <button class="tab active" data-tab="pomodoro"><span class="icon" data-icon="focus"></span>Pomodoro</button>
+          <button class="tab" data-tab="schedule"><span class="icon" data-icon="calendar"></span>Calendar</button>
+          <button class="tab" data-tab="timer"><span class="icon" data-icon="timer"></span>Timer</button>
+          <button class="tab" data-tab="stopwatch"><span class="icon" data-icon="stopwatch"></span>Stopwatch</button>
+          <button class="tab" data-tab="clipboard"><span class="icon" data-icon="clipboard"></span>Clipboard</button>
+          <button class="tab" data-tab="analytics"><span class="icon" data-icon="analytics"></span>Analytics</button>
+        </div>
+        <div class="topbar-actions">
+          <button class="icon-btn" id="btn-settings" title="Settings"><span class="icon" data-icon="settings"></span></button>
+          <button class="icon-btn" id="btn-collapse" title="Collapse"><span class="icon" data-icon="close"></span></button>
+        </div>
+      </div>
+
+      <!-- Pomodoro -->
+      <section class="panel active" id="panel-pomodoro">
+        <div class="phase-label" id="pomo-phase">Focus</div>
+        <div class="big-time" id="pomo-time">25:00</div>
+        <div class="dots" id="pomo-dots"></div>
+        <div class="controls">
+          <button class="btn ghost" id="pomo-reset">Reset</button>
+          <button class="btn primary" id="pomo-toggle">Start</button>
+        </div>
+      </section>
+
+      <!-- Calendar -->
+      <section class="panel schedule-panel" id="panel-schedule" aria-label="Calendar">
+        <div class="schedule-shell">
+          <main class="calendar-pane">
+            <header class="calendar-toolbar">
+              <div class="calendar-nav">
+                <button class="icon-btn" id="calendar-prev" title="Previous period"><span class="icon" data-icon="chevron-left"></span></button>
+                <h1 id="calendar-period">—</h1>
+                <button class="icon-btn" id="calendar-next" title="Next period"><span class="icon" data-icon="chevron-right"></span></button>
+              </div>
+              <div class="calendar-actions">
+                <div class="segmented compact" id="calendar-view-switch" aria-label="Calendar view">
+                  <button class="seg-btn active" data-view="month">Month</button>
+                  <button class="seg-btn" data-view="day">Day</button>
+                </div>
+              </div>
+            </header>
+            <div class="calendar-stage" id="calendar-stage"></div>
+            <div class="calendar-footer">
+              <button class="toolbar-btn calendar-today-btn" id="calendar-today">Today</button>
+            </div>
+          </main>
+
+          <aside class="tasks-pane" aria-label="Tasks">
+            <header class="tasks-header">
+              <div class="tasks-header-top">
+                <h2>Tasks</h2>
+                <div class="tasks-header-right">
+                  <span class="tasks-open-count" id="tasks-open-count">0 open</span>
+                  <button class="icon-btn task-add-icon" id="task-add" title="Create a task"><span class="icon" data-icon="plus"></span></button>
+                </div>
+              </div>
+              <div class="segmented compact tasks-filter" id="tasks-filter" aria-label="Tasks filter">
+                <button class="seg-btn active" data-filter="selected">Today</button>
+                <button class="seg-btn" data-filter="unscheduled">Unscheduled</button>
+                <button class="seg-btn" data-filter="all">All</button>
+              </div>
+            </header>
+
+            <div class="tasks-list" id="tasks-list"></div>
+
+            <div class="task-editor-shell" id="task-editor-shell" hidden>
+              <form class="task-editor" id="task-editor">
+                <div class="task-editor-header">
+                  <span class="task-editor-title" id="task-editor-title-label">New task</span>
+                  <button type="button" class="icon-btn task-editor-delete" id="task-editor-delete" title="Delete task" hidden><span class="icon" data-icon="trash"></span></button>
+                </div>
+                <div class="task-editor-row">
+                  <input id="task-editor-title" maxlength="500" autocomplete="off" placeholder="Task title" aria-label="Task title" required>
+                  <button class="task-editor-submit" id="task-editor-submit" type="submit">Create</button>
+                </div>
+                <div class="task-editor-row">
+                  <input id="task-editor-note" maxlength="5000" autocomplete="off" placeholder="Note (optional)" aria-label="Task note">
+                  <button class="task-editor-cancel" id="task-editor-cancel" type="button">Cancel</button>
+                </div>
+              </form>
+            </div>
+
+            <button class="task-add-row" id="task-add-row"><span class="icon" data-icon="plus"></span>Add a task</button>
+          </aside>
+        </div>
+        <button class="focus-fab" id="schedule-focus" title="Start focus session"><span class="icon" data-icon="play"></span></button>
+      </section>
+      <!-- Timer -->
+      <section class="panel" id="panel-timer">
+        <div class="big-time" id="timer-time">05:00</div>
+        <div class="steppers" id="timer-steppers">
+          <div class="stepper">
+            <button data-target="timer-min" data-delta="1">▲</button>
+            <div class="lbl">MIN</div>
+            <button data-target="timer-min" data-delta="-1">▼</button>
+          </div>
+          <div class="stepper">
+            <button data-target="timer-sec" data-delta="15">▲</button>
+            <div class="lbl">SEC</div>
+            <button data-target="timer-sec" data-delta="-15">▼</button>
+          </div>
+        </div>
+        <div class="controls">
+          <button class="btn ghost" id="timer-reset">Reset</button>
+          <button class="btn primary" id="timer-toggle">Start</button>
+        </div>
+      </section>
+
+      <!-- Stopwatch -->
+      <section class="panel" id="panel-stopwatch">
+        <div class="big-time" id="sw-time">00:00.0</div>
+        <div class="controls">
+          <button class="btn ghost" id="sw-reset">Reset</button>
+          <button class="btn primary" id="sw-toggle">Start</button>
+        </div>
+      </section>
+
+      <!-- Clipboard history -->
+      <section class="panel clipboard-panel" id="panel-clipboard" aria-label="Clipboard history">
+        <div class="clipboard-heading">
+          <div>
+            <span class="phase-label">Clipboard</span>
+            <span class="clipboard-count" id="clipboard-count">0 / 25</span>
+          </div>
+          <button class="icon-btn" id="clipboard-refresh" type="button" title="Refresh clipboard history" aria-label="Refresh clipboard history"><span class="icon" data-icon="refresh"></span></button>
+        </div>
+        <div class="clipboard-list" id="clipboard-list"></div>
+        <div class="clipboard-empty" id="clipboard-empty">Nothing copied yet.</div>
+      </section>
+
+      <!-- Analytics -->
+      <section class="panel analytics-panel" id="panel-analytics" aria-label="Analytics">
+        <header class="analytics-toolbar">
+          <div class="analytics-toolbar-title">
+            <span class="phase-label">Analytics</span>
+            <span class="analytics-month-label" id="analytics-period">—</span>
+          </div>
+          <div class="analytics-toolbar-actions">
+            <button class="icon-btn analytics-nav-btn" id="analytics-prev" type="button" title="Previous month" aria-label="Previous month"><span class="icon" data-icon="chevron-left"></span></button>
+            <button class="icon-btn analytics-nav-btn" id="analytics-next" type="button" title="Next month" aria-label="Next month"><span class="icon" data-icon="chevron-right"></span></button>
+            <button class="icon-btn analytics-expand-btn" id="analytics-expand" type="button" title="Expand Analytics" aria-label="Expand Analytics"><span class="icon" data-icon="expand"></span></button>
+            <button class="icon-btn analytics-expand-btn" id="analytics-collapse" type="button" title="Collapse Analytics" aria-label="Collapse Analytics"><span class="icon" data-icon="shrink"></span></button>
+          </div>
+        </header>
+
+        <div class="analytics-calendar-card">
+          <div class="analytics-months" id="analytics-months">
+            <section class="analytics-month-card is-current" data-month-slot="current" aria-label="Current month">
+              <div class="analytics-month-heading" id="analytics-month-current-label">—</div>
+              <div class="analytics-month-grid">
+                <div class="analytics-week-labels" aria-hidden="true">
+                  <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
+                </div>
+                <div class="analytics-grid" id="analytics-grid" role="grid" aria-label="Current month concentration"></div>
+              </div>
+            </section>
+            <section class="analytics-month-card" data-month-slot="next" aria-label="Next month">
+              <div class="analytics-month-heading" id="analytics-month-next-label">—</div>
+              <div class="analytics-month-grid">
+                <div class="analytics-week-labels" aria-hidden="true">
+                  <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
+                </div>
+                <div class="analytics-grid" id="analytics-grid-next" role="grid" aria-label="Next month concentration"></div>
+              </div>
+            </section>
+          </div>
+        </div>
+        <div class="analytics-legend" aria-label="Activity intensity">
+          <span>Less</span>
+          <i class="analytics-level-0"></i><i class="analytics-level-1"></i><i class="analytics-level-2"></i><i class="analytics-level-3"></i><i class="analytics-level-4"></i><i class="analytics-level-5"></i>
+          <span>More</span>
+        </div>
+
+        <div class="analytics-detail-grid">
+          <div class="analytics-stat"><span>Total focus</span><strong id="analytics-total-focus">0 min</strong></div>
+          <div class="analytics-stat"><span>Pomodoros</span><strong id="analytics-total-sessions">0</strong></div>
+          <div class="analytics-stat"><span>Completed</span><strong id="analytics-completed">0</strong></div>
+          <div class="analytics-stat"><span>Average session</span><strong id="analytics-average-session">0 min</strong></div>
+          <div class="analytics-stat"><span>Most productive day</span><strong id="analytics-best-day">—</strong></div>
+          <div class="analytics-stat"><span>Most focused hour</span><strong id="analytics-best-hour">—</strong></div>
+          <div class="analytics-stat"><span>Daily average</span><strong id="analytics-daily-average">0 min</strong></div>
+          <div class="analytics-stat"><span>Completion rate</span><strong id="analytics-completion-rate">—</strong></div>
+        </div>
+
+        <div class="analytics-charts">
+          <section class="analytics-chart-card analytics-daily-card">
+            <div class="analytics-chart-heading"><span>Focus by day</span><span id="analytics-active-days">0 active days</span></div>
+            <svg id="analytics-daily-chart" class="analytics-daily-chart" viewBox="0 0 640 150" preserveAspectRatio="none" aria-label="Daily focus trend"></svg>
+          </section>
+          <section class="analytics-chart-card analytics-hour-card">
+            <div class="analytics-chart-heading"><span>Focus by hour</span><span id="analytics-hour-label">—</span></div>
+            <div class="analytics-hour-chart" id="analytics-hour-chart" aria-label="Focus by hour"></div>
+          </section>
+          <section class="analytics-chart-card analytics-status-card">
+            <div class="analytics-chart-heading"><span>Pomodoro outcomes</span><span id="analytics-status-label">—</span></div>
+            <div class="analytics-status-bar"><span id="analytics-status-completed"></span><span id="analytics-status-interrupted"></span></div>
+            <div class="analytics-status-meta"><span><i class="analytics-status-dot completed"></i>Completed <strong id="analytics-status-completed-count">0</strong></span><span><i class="analytics-status-dot interrupted"></i>Interrupted <strong id="analytics-status-interrupted-count">0</strong></span></div>
+          </section>
+        </div>
+
+        <div class="analytics-tooltip" id="analytics-tooltip" role="tooltip" hidden></div>
+      </section>
+    </div>
+
+    <!-- Rappel calendrier : état temporaire de la capsule, 3 secondes. -->
+    <div class="view" id="view-reminder" aria-live="polite">
+      <span class="calendar-reminder-icon icon" data-icon="bell"></span>
+      <div class="calendar-reminder-copy">
+        <strong id="calendar-reminder-title">Calendar event</strong>
+        <span id="calendar-reminder-countdown">in 10 min</span>
+      </div>
+    </div>
+
+    <!-- État compact pendant qu'un minuteur tourne -->
+    <div class="view" id="view-running">
+      <span class="icon" id="run-icon" data-icon="focus"></span>
+      <span class="run-time" id="run-time">25:00</span>
+      <span class="run-label" id="run-label">Focus</span>
+      <button class="pause-mini" id="run-pause" title="Pause"><span class="icon" data-icon="pause"></span></button>
+    </div>
+
+    <!-- Shelf : références de fichiers déposés dans le notch. -->
+    <div class="view" id="view-shelf">
+      <div class="shelf-header">
+        <div class="shelf-title-wrap">
+          <span class="shelf-title">Shelf</span>
+          <span class="shelf-subtitle" id="shelf-subtitle">0 files</span>
+        </div>
+        <div class="shelf-header-actions">
+          <button class="icon-btn" id="shelf-clear" type="button" title="Clear shelf" aria-label="Clear shelf"><span class="icon" data-icon="trash"></span></button>
+          <button class="icon-btn" id="shelf-close" type="button" title="Close shelf" aria-label="Close shelf"><span class="icon" data-icon="close"></span></button>
+        </div>
+      </div>
+      <div class="shelf-dropzone" id="shelf-dropzone">
+        <div class="shelf-empty" id="shelf-empty">
+          <span class="shelf-empty-icon icon" data-icon="shelf"></span>
+          <strong>Drop files or folders here</strong>
+          <span>Your shelf keeps references, not copies.</span>
+        </div>
+        <div class="shelf-list" id="shelf-list"></div>
+      </div>
+    </div>
+
+    <!-- Settings : une bulle qui s'agrandit depuis le notch lui-même,
+         jamais une fenêtre Electron séparée. -->
+    <div class="view" id="view-settings">
+      <div class="settings-header">
+        <span class="settings-title">Settings</span>
+        <button class="icon-btn" id="btn-close-settings" title="Close"><span class="icon" data-icon="close"></span></button>
+      </div>
+
+      <div class="settings-scroll">
+
+        <div class="settings-group">
+          <div class="settings-group-title">Pomodoro</div>
+          <div class="settings-row">
+            <span class="row-label">Focus</span>
+            <div class="stepper-inline" data-field="focusMinutes" data-min="1" data-max="180" data-step="1" data-suffix=" min">
+              <button class="step-btn" data-delta="-1">–</button>
+              <span class="step-value" data-value>25 min</span>
+              <button class="step-btn" data-delta="1">+</button>
+            </div>
+          </div>
+          <div class="settings-row">
+            <span class="row-label">Short break</span>
+            <div class="stepper-inline" data-field="shortBreakMinutes" data-min="1" data-max="60" data-step="1" data-suffix=" min">
+              <button class="step-btn" data-delta="-1">–</button>
+              <span class="step-value" data-value>5 min</span>
+              <button class="step-btn" data-delta="1">+</button>
+            </div>
+          </div>
+          <div class="settings-row">
+            <span class="row-label">Long break</span>
+            <div class="stepper-inline" data-field="longBreakMinutes" data-min="1" data-max="120" data-step="1" data-suffix=" min">
+              <button class="step-btn" data-delta="-1">–</button>
+              <span class="step-value" data-value>15 min</span>
+              <button class="step-btn" data-delta="1">+</button>
+            </div>
+          </div>
+          <div class="settings-row">
+            <span class="row-label">Cycles before long break</span>
+            <div class="stepper-inline" data-field="pomodorosBeforeLongBreak" data-min="1" data-max="12" data-step="1" data-suffix="">
+              <button class="step-btn" data-delta="-1">–</button>
+              <span class="step-value" data-value>4</span>
+              <button class="step-btn" data-delta="1">+</button>
+            </div>
+          </div>
+          <div class="settings-row">
+            <span class="row-label">Auto-start next session</span>
+            <label class="switch"><input type="checkbox" id="s-autoStartNext"><span class="switch-track"></span></label>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title">Appearance</div>
+          <div class="settings-row column">
+            <span class="row-label">Theme</span>
+            <div class="segmented" id="s-theme">
+              <button data-value="sombre" class="seg-btn">Dark</button>
+              <button data-value="clair" class="seg-btn">Light</button>
+              <button data-value="auto" class="seg-btn">Auto</button>
+            </div>
+          </div>
+          <div class="settings-row column">
+            <span class="row-label">Accent color</span>
+            <div class="swatches" id="s-accent">
+              <button class="swatch" data-color="#0a84ff" style="--c:#0a84ff"><span class="icon" data-icon="check"></span></button>
+              <button class="swatch" data-color="#5e5ce6" style="--c:#5e5ce6"><span class="icon" data-icon="check"></span></button>
+              <button class="swatch" data-color="#bf5af2" style="--c:#bf5af2"><span class="icon" data-icon="check"></span></button>
+              <button class="swatch" data-color="#ff375f" style="--c:#ff375f"><span class="icon" data-icon="check"></span></button>
+              <button class="swatch" data-color="#ff453a" style="--c:#ff453a"><span class="icon" data-icon="check"></span></button>
+              <button class="swatch" data-color="#ff9f0a" style="--c:#ff9f0a"><span class="icon" data-icon="check"></span></button>
+              <button class="swatch" data-color="#ffd60a" style="--c:#ffd60a"><span class="icon" data-icon="check"></span></button>
+              <button class="swatch" data-color="#30d158" style="--c:#30d158"><span class="icon" data-icon="check"></span></button>
+              <button class="swatch" data-color="#64d2ff" style="--c:#64d2ff"><span class="icon" data-icon="check"></span></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-group pinned-pages-settings">
+          <div class="settings-group-title">Pinned pages</div>
+          <div class="settings-row column">
+            <span class="row-label">Pages shown on hover</span>
+            <p class="settings-help">Pin up to 4 pages. Their order here controls the compact hover view.</p>
+            <div class="pinned-pages-list" id="pinned-pages-list"></div>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title">Calendars</div>
+          <div class="settings-row column calendar-sources-settings">
+            <span class="row-label">iCal sources</span>
+            <p class="settings-help">Add local .ics files here. Enabled calendars are displayed together in Calendar.</p>
+            <div class="calendar-sources-list" id="calendar-sources-list"></div>
+            <div class="calendar-sources-empty" id="calendar-sources-empty">No calendars added.</div>
+            <div class="calendar-source-add-row">
+              <input class="calendar-source-url-input" id="calendar-settings-url" type="url" inputmode="url" autocomplete="off" placeholder="https://…/calendar.ics" aria-label="iCal calendar URL">
+              <button class="btn ghost calendar-source-add" id="calendar-settings-add" type="button">
+                <span class="icon" data-icon="plus"></span>Add
+              </button>
+            </div>
+            <p class="settings-help calendar-sync-help">iCal links refresh automatically every 10 minutes.</p>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title">Reminders</div>
+          <div class="settings-row">
+            <span class="row-label">Calendar &amp; task reminders</span>
+            <label class="switch"><input type="checkbox" id="s-eventRemindersEnabled"><span class="switch-track"></span></label>
+          </div>
+          <div class="settings-row">
+            <span class="row-label">Remind before</span>
+            <div class="stepper-inline" data-field="eventReminderMinutes" data-min="1" data-max="180" data-step="1" data-suffix=" min">
+              <button class="step-btn" data-delta="-1">–</button>
+              <span class="step-value" data-value>10 min</span>
+              <button class="step-btn" data-delta="1">+</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title">Behavior</div>
+          <div class="settings-row">
+            <span class="row-label">Always on top</span>
+            <label class="switch"><input type="checkbox" id="s-alwaysOnTop"><span class="switch-track"></span></label>
+          </div>
+          <div class="settings-row">
+            <span class="row-label">Launch at startup</span>
+            <label class="switch"><input type="checkbox" id="s-launchAtStartup"><span class="switch-track"></span></label>
+          </div>
+          <div class="settings-row">
+            <span class="row-label">Reduce motion</span>
+            <label class="switch"><input type="checkbox" id="s-reduceMotion"><span class="switch-track"></span></label>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title">Sound</div>
+          <div class="settings-row">
+            <span class="row-label">Sounds</span>
+            <label class="switch"><input type="checkbox" id="s-soundEnabled"><span class="switch-track"></span></label>
+          </div>
+          <div class="settings-row sound-volume-row">
+            <span class="row-label">Volume</span>
+            <div class="sound-volume">
+              <input id="s-soundVolume" type="range" min="0" max="100" step="5" value="60" aria-label="Sound volume">
+              <span class="sound-volume-value" id="s-soundVolume-value">60%</span>
+            </div>
+          </div>
+          <div class="settings-row">
+            <span class="row-label">Notifications</span>
+            <label class="switch"><input type="checkbox" id="s-soundNotifications"><span class="switch-track"></span></label>
+          </div>
+          <div class="settings-row">
+            <span class="row-label">Timers &amp; Pomodoro</span>
+            <label class="switch"><input type="checkbox" id="s-soundTimers"><span class="switch-track"></span></label>
+          </div>
+          <div class="settings-row">
+            <span class="row-label">Interface ticks</span>
+            <label class="switch"><input type="checkbox" id="s-soundUi"><span class="switch-track"></span></label>
+          </div>
+          <div class="settings-row">
+            <span class="row-label">Mute while media plays</span>
+            <label class="switch"><input type="checkbox" id="s-soundMuteWhenMedia"><span class="switch-track"></span></label>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title">Updates</div>
+          <div class="settings-row">
+            <span class="row-label">Automatic updates</span>
+            <label class="switch"><input type="checkbox" id="s-autoUpdateEnabled"><span class="switch-track"></span></label>
+          </div>
+          <div class="settings-row">
+            <div class="update-info">
+              <span class="row-label" id="update-version">Version —</span>
+              <p class="settings-help" id="update-status">—</p>
+            </div>
+            <button class="btn ghost" id="update-action" type="button">Check now</button>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title">Privacy</div>
+          <div class="settings-row">
+            <span class="row-label">Clipboard history</span>
+            <label class="switch"><input type="checkbox" id="s-clipboardHistoryEnabled"><span class="switch-track"></span></label>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="settings-footer">
+        <button class="btn ghost" id="btn-reset-settings">Reset settings</button>
+      </div>
+    </div>
+
+    <div class="planner-backdrop" id="event-backdrop" hidden>
+      <article class="planner-sheet" role="dialog" aria-modal="true" aria-labelledby="event-sheet-title">
+        <header><div><span class="sheet-kicker">Event</span><h2 id="event-sheet-title">Details</h2></div><button class="icon-btn" id="event-close" title="Close"><span class="icon" data-icon="close"></span></button></header>
+        <dl id="event-details"></dl>
+      </article>
+    </div>
+
+        <div class="planner-toast" id="planner-toast" role="status" aria-live="polite"></div>
+  </div>
+
+  <!-- System media companion notch. It stays separate from #capsule so the
+       two surfaces can animate and re-center as one visual group. -->
+  <div id="media-notch" hidden aria-live="polite">
+    <button class="media-compact" id="media-compact" type="button" title="Open media controls" aria-label="Open media controls">
+      <img id="media-compact-cover" alt="">
+      <span class="media-cover-fallback"><span class="icon" data-icon="music"></span></span>
+      <span class="media-playing-dot" aria-hidden="true"></span>
+    </button>
+
+    <section class="media-panel" id="media-panel" aria-label="Media controls">
+      <button class="media-cover-button" id="media-collapse" type="button" title="Collapse media controls" aria-label="Collapse media controls">
+        <img id="media-cover" alt="">
+        <span class="media-cover-fallback"><span class="icon" data-icon="music"></span></span>
+      </button>
+
+      <div class="media-content">
+        <div class="media-heading">
+          <div class="media-copy">
+            <strong id="media-title">Nothing playing</strong>
+            <span id="media-artist"></span>
+          </div>
+          <span class="media-source" id="media-source"></span>
+        </div>
+
+        <div class="media-progress-row">
+          <span id="media-current">0:00</span>
+          <input id="media-progress" type="range" min="0" max="100" step="0.1" value="0" aria-label="Media progress">
+          <span id="media-duration">0:00</span>
+        </div>
+
+        <div class="media-controls">
+          <button class="media-control" id="media-previous" type="button" title="Previous"><span class="icon" data-icon="skip-back"></span></button>
+          <button class="media-control media-control-primary" id="media-play-pause" type="button" title="Play or pause"><span class="icon" data-icon="pause"></span></button>
+          <button class="media-control" id="media-next" type="button" title="Next"><span class="icon" data-icon="skip-forward"></span></button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+<script src="icons.js"></script>
+<script src="analytics-engine.js"></script>
+<script src="sound-assets.js"></script>
+<script src="sound-engine.js"></script>
+<script src="app.js"></script>
+<script type="module" src="calendar-engine.js"></script>
+<script type="module" src="planner.js"></script>
+</body>
+</html>
