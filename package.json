@@ -1,6 +1,6 @@
 {
   "name": "notch-bar",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Notch bar Windows — Pomodoro, Calendar, Tasks, Now Playing",
   "main": "main.js",
   "scripts": {
