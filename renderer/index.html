@@ -62,7 +62,7 @@
         </div>
         <div class="topbar-actions">
           <button class="icon-btn" id="btn-settings" title="Settings"><span class="icon" data-icon="settings"></span></button>
-          <button class="icon-btn" id="btn-collapse" title="Collapse"><span class="icon" data-icon="close"></span></button>
+          <button class="icon-btn" id="btn-collapse" title="Collapse (Esc)" aria-label="Collapse"><span class="icon" data-icon="chevron-up"></span></button>
         </div>
       </div>
 
@@ -73,6 +73,7 @@
         <div class="dots" id="pomo-dots"></div>
         <div class="controls">
           <button class="btn ghost" id="pomo-reset">Reset</button>
+          <button class="btn ghost" id="pomo-skip" title="Skip to break" aria-label="Skip to next phase">Skip</button>
           <button class="btn primary" id="pomo-toggle">Start</button>
         </div>
       </section>
@@ -142,7 +143,15 @@
       </section>
       <!-- Timer -->
       <section class="panel" id="panel-timer">
-        <div class="big-time" id="timer-time">05:00</div>
+        <div class="big-time" id="timer-time" role="button" tabindex="0" title="Click to type a duration (e.g. 45, 5:30, 90s)">05:00</div>
+        <input class="big-time-input" id="timer-time-input" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="8" aria-label="Timer duration" hidden>
+        <div class="presets" id="timer-presets" role="group" aria-label="Timer presets">
+          <button type="button" class="preset-chip" data-minutes="5">5 min</button>
+          <button type="button" class="preset-chip" data-minutes="10">10 min</button>
+          <button type="button" class="preset-chip" data-minutes="15">15 min</button>
+          <button type="button" class="preset-chip" data-minutes="25">25 min</button>
+          <button type="button" class="preset-chip" data-minutes="45">45 min</button>
+        </div>
         <div class="steppers" id="timer-steppers">
           <div class="stepper">
             <button data-target="timer-min" data-delta="1">▲</button>
@@ -563,6 +572,7 @@
 <script src="analytics-engine.js"></script>
 <script src="sound-assets.js"></script>
 <script src="sound-engine.js"></script>
+<script src="duration-input.js"></script>
 <script src="app.js"></script>
 <script type="module" src="calendar-engine.js"></script>
 <script type="module" src="planner.js"></script>

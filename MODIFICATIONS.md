@@ -175,3 +175,11 @@ Validation: `npm run check` passes with 17/17 tests. Full `npm run test:browser`
 - Launching the app a second time now opens the notch instead of only re-showing a hidden window.
 - Settings opened from a compact state (tray, reminder, update banner) close back to the normal compact capsule.
 - Added tests/tray-quit.test.mjs.
+
+## v1.4.0 — Ergonomics
+
+- The collapse button in the open view is now a chevron instead of a close cross, which was easy to read as "quit the app" (tooltip: "Collapse (Esc)").
+- Escape now collapses the open view one layer at a time: Settings, then Shelf, then the expanded media notch, then the main view. It is ignored while a text field or a planner dialog (event, task editor) is open, since those handle Escape themselves.
+- Timer: preset chips (5 / 10 / 15 / 25 / 45 min) and direct typing of the duration by clicking the time ("45", "5:30", "1:30:00", "90s"). Invalid input is outlined in red and Escape cancels. Parsing lives in `renderer/duration-input.js` (unit tested).
+- Pomodoro: new Skip button (Reset | Skip | Start). Skipping a focus session records it as interrupted (it is not counted as completed) and goes to the short break; skipping a break goes back to focus. Skip never changes whether the timer is running.
+- Added tests/ergonomics.test.mjs.

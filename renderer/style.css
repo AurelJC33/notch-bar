@@ -283,6 +283,21 @@ body.reduce-motion .calendar-reminder-icon{ animation:none; opacity:1; }
 .stepper button:hover{ color:var(--text); }
 .stepper .lbl{ font-size:9.5px; color:var(--sub); letter-spacing:.05em; margin:2px 0; }
 
+/* ---- Timer : préréglages et saisie directe de la durée ---- */
+#panel-timer{ gap:10px; }
+.presets{ display:flex; gap:6px; }
+.preset-chip{ background:var(--panel2); color:var(--sub); border:1px solid var(--border); border-radius:999px; padding:4px 10px; font-size:11px; font-family:inherit; cursor:pointer; transition:background .15s ease, color .15s ease, border-color .15s ease, transform .08s ease; }
+.preset-chip:hover:not(:disabled){ color:var(--text); }
+.preset-chip:active:not(:disabled){ transform:scale(.95); }
+.preset-chip.active{ background:var(--accent); border-color:transparent; color:#fff; }
+.preset-chip:disabled{ opacity:.45; cursor:default; }
+/* Le temps et son champ de saisie ont exactement la même hauteur : pas de saut de mise en page. */
+#timer-time{ height:52px; line-height:52px; padding:0 14px; border-radius:12px; cursor:text; transition:background .15s ease; }
+#timer-time:not(.locked):hover{ background:var(--panel2); }
+#timer-time.locked{ cursor:default; }
+.big-time-input{ box-sizing:border-box; width:170px; height:52px; padding:0; text-align:center; font-family:inherit; font-size:42px; font-weight:700; font-variant-numeric:tabular-nums; letter-spacing:.02em; color:var(--text); background:var(--panel2); border:1px solid var(--accent); border-radius:12px; outline:none; transition:border-color .15s ease; }
+.big-time-input.invalid{ border-color:var(--red); }
+
 /* ---- running (compact) ---- */
 #view-running{ height:34px; align-items:center; gap:9px; padding:0 14px; font-size:12.5px; cursor:pointer; }
 .run-time{ font-weight:700; font-variant-numeric:tabular-nums; }

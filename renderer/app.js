@@ -188,10 +188,11 @@ $('view-running').addEventListener('click', (e) => {
 });
 $('shelf-pill-badge').addEventListener('click', (e) => { e.stopPropagation(); openShelfPanel(); });
 $('shelf-hover-shortcut').addEventListener('click', (e) => { e.stopPropagation(); openShelfPanel(); });
-$('btn-collapse').addEventListener('click', () => {
+function collapseToCompact(){
   requestWindowMode('notch');
   setMode(activeTool ? 'running' : 'pill');
-});
+}
+$('btn-collapse').addEventListener('click', collapseToCompact);
 $('btn-settings').addEventListener('click', () => openSettingsPanel());
 
 
@@ -643,6 +644,7 @@ function renderPomo(){
   $('pomo-phase').textContent = pomoPhaseLabel(pomo.phase);
   $('pomo-time').textContent = fmt(pomo.remaining);
   $('pomo-toggle').textContent = pomo.running ? 'Pause' : (pomo.remaining < pomoPhaseDuration(pomo.phase) ? 'Resume' : 'Start');
+  $('pomo-skip').title = pomo.phase === 'focus' ? 'Skip to break' : 'Skip to focus';
   renderPomoDots();
   if(mode==='running' && activeTool==='pomodoro'){
     $('run-icon').dataset.icon = 'focus';
@@ -747,6 +749,30 @@ function pomoReset(){
 $('pomo-toggle').addEventListener('click', () => { playSound('tick'); pomo.running ? pomoPause() : pomoStart(); });
 $('pomo-reset').addEventListener('click', pomoReset);
 
+/* Skip : passe à la phase suivante sans changer l'état marche / pause.
+   Sauter un focus ne le compte pas comme terminé : la session est enregistrée
+   comme interrompue (si elle a duré) et le compteur de pomodoros n'avance pas ;
+   on va à la courte pause. Sauter une pause ramène au focus. */
+function pomoSkip(){
+  const wasRunning = pomo.running;
+  if(pomo.phase === 'focus'){
+    if(pomoSession){ accruePomoSession(); recordPomoAnalyticsSession(false); }
+    pomo.phase = 'short';
+  } else {
+    pomo.phase = 'focus';
+  }
+  pomo.remaining = pomoPhaseDuration(pomo.phase);
+  if(wasRunning){
+    // L'intervalle déjà armé relit pomo.endAt / pomo.phase à chaque tick : on
+    // repart simplement de la nouvelle échéance (sans refermer la vue ouverte).
+    pomo.endAt = Date.now() + pomo.remaining * 1000;
+    if(pomo.phase === 'focus'){ beginPomoSessionIfNeeded(); resumePomoSession(); }
+    const [c,k] = pomoEdge(pomo.phase); setEdge(c,k);
+  }
+  renderPomo();
+}
+$('pomo-skip').addEventListener('click', () => { playSound('tick'); pomoSkip(); });
+
 /* ==================== MINUTEUR ==================== */
 const timer = { minutes: 5, seconds: 0, remaining: 5*60, running: false, handle: null, endAt: 0 };
 
@@ -756,6 +782,11 @@ function timerSyncRemaining(){
 
 function renderTimer(){
   $('timer-time').textContent = fmt(timer.remaining);
+  $('timer-time').classList.toggle('locked', !!timer.running);
+  document.querySelectorAll('#timer-presets .preset-chip').forEach((chip) => {
+    chip.classList.toggle('active', Number(chip.dataset.minutes) * 60 === timer.minutes*60 + timer.seconds);
+    chip.disabled = !!timer.running;
+  });
   $('timer-toggle').textContent = timer.running ? 'Pause' : (timer.remaining < timer.minutes*60+timer.seconds ? 'Resume' : 'Start');
   if(mode==='running' && activeTool==='timer'){
     $('run-icon').dataset.icon = 'timer';
@@ -777,6 +808,57 @@ document.querySelectorAll('#timer-steppers button').forEach(btn => {
     renderTimer();
   });
 });
+/* ---- préréglages et saisie directe de la durée ---- */
+function timerSetDuration(totalSeconds){
+  timer.minutes = Math.floor(totalSeconds / 60);
+  timer.seconds = totalSeconds % 60;
+  timer.remaining = totalSeconds;
+  renderTimer();
+}
+document.querySelectorAll('#timer-presets .preset-chip').forEach((chip) => {
+  chip.addEventListener('click', () => {
+    if(timer.running) return;
+    playSound('tick');
+    timerSetDuration(Number(chip.dataset.minutes) * 60);
+  });
+});
+
+const timerTimeEl = $('timer-time');
+const timerInputEl = $('timer-time-input');
+function timerEditBegin(){
+  if(timer.running || !timerInputEl.hidden) return;
+  timerInputEl.value = fmt(timer.minutes*60 + timer.seconds);
+  timerInputEl.classList.remove('invalid');
+  timerTimeEl.hidden = true;
+  timerInputEl.hidden = false;
+  timerInputEl.focus();
+  timerInputEl.select();
+}
+// Renvoie false (et garde le champ ouvert) si on valide un texte invalide.
+function timerEditEnd(commit){
+  if(timerInputEl.hidden) return true;
+  if(commit){
+    const total = window.DurationInput ? window.DurationInput.parseDuration(timerInputEl.value) : null;
+    if(total === null){ timerInputEl.classList.add('invalid'); return false; }
+    timerSetDuration(total);
+  }
+  timerInputEl.hidden = true;
+  timerTimeEl.hidden = false;
+  renderTimer();
+  return true;
+}
+timerTimeEl.addEventListener('click', timerEditBegin);
+timerTimeEl.addEventListener('keydown', (e) => {
+  if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); timerEditBegin(); }
+});
+timerInputEl.addEventListener('input', () => timerInputEl.classList.remove('invalid'));
+timerInputEl.addEventListener('keydown', (e) => {
+  if(e.key === 'Enter'){ e.preventDefault(); timerEditEnd(true); }
+  else if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); timerEditEnd(false); }
+});
+// En quittant le champ : on valide si le texte est correct, sinon on annule.
+timerInputEl.addEventListener('blur', () => { if(!timerEditEnd(true)) timerEditEnd(false); });
+
 function timerStart(){
   if(timer.remaining<=0) timer.remaining = timer.minutes*60 + timer.seconds;
   if(timer.remaining<=0) return;
@@ -993,8 +1075,17 @@ quitBtn.addEventListener('click', () => {
   clearTimeout(quitTimer);
   if(window.api.quitApp) window.api.quitApp();
 });
+/* Échap replie une couche à la fois : réglages, Shelf, notch média, puis vue principale.
+   Il ne replie pas si un champ de saisie ou une fenêtre du planner est ouvert :
+   eux gèrent Échap (planner.js ferme l'événement / l'éditeur de tâche). */
 document.addEventListener('keydown', (e) => {
-  if(e.key === 'Escape' && mode === 'settings') closeSettingsPanel();
+  if(e.key !== 'Escape' || e.defaultPrevented) return;
+  if(mode === 'settings'){ closeSettingsPanel(); return; }
+  if(e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+  if(!$('event-backdrop').hidden || !$('task-editor-shell').hidden) return;
+  if(mode === 'shelf'){ closeShelfPanel(); return; }
+  if(typeof mediaExpanded !== 'undefined' && mediaExpanded){ setMediaExpanded(false); return; }
+  if(OUTSIDE_COLLAPSIBLE_MODES.has(mode)) collapseToCompact();
 });
 
 /* ---- steppers (durées pomodoro) ---- */
