@@ -11,6 +11,9 @@ contextBridge.exposeInMainWorld('api', {
   onSettingsUpdated: (callback) => {
     ipcRenderer.on('settings-updated', (event, settings) => callback(settings));
   },
+  onWindowBlur: (callback) => {
+    ipcRenderer.on('window-blurred', () => callback());
+  },
   getUpdateState: () => ipcRenderer.invoke('get-update-state'),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   installUpdate: () => ipcRenderer.invoke('install-update'),

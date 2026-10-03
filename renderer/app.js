@@ -6,6 +6,7 @@ let settings = {
   pomodorosBeforeLongBreak: 4,
   autoStartNext: false,
   autoUpdateEnabled: true,
+  collapseOnOutsideClick: true,
   soundEnabled: true,
   soundVolume: 60,
   soundUi: false,
@@ -175,6 +176,23 @@ $('btn-collapse').addEventListener('click', () => {
   setMode(activeTool ? 'running' : 'pill');
 });
 $('btn-settings').addEventListener('click', () => openSettingsPanel());
+
+
+/* ---- clic en dehors du notch : repli automatique ----
+   Le process principal nous prévient quand la fenêtre perd le focus (clic sur une
+   autre app, le bureau, la barre des tâches, Alt+Tab). Les modes « ouverts » se
+   replient alors ; pill, hover, running et reminder sont déjà compacts. */
+const OUTSIDE_COLLAPSIBLE_MODES = new Set(['expanded', 'schedule', 'analytics', 'analytics-expanded', 'settings', 'shelf']);
+function collapseFromOutsideClick(){
+  if(settings.collapseOnOutsideClick === false) return;
+  if(shelfDragActive) return;
+  if(typeof mediaExpanded !== 'undefined' && mediaExpanded) setMediaExpanded(false);
+  if(!OUTSIDE_COLLAPSIBLE_MODES.has(mode)) return;
+  requestWindowMode('notch');
+  setMode(activeTool ? 'running' : 'pill');
+  setWindowMouseIgnored(true, { forward: true });
+}
+if(window.api.onWindowBlur) window.api.onWindowBlur(collapseFromOutsideClick);
 
 /* ==================== SHELF ==================== */
 function isShelfDragEvent(event) {
@@ -957,6 +975,7 @@ function populateSettingsUI(){
   $('s-launchAtStartup').checked = !!settings.launchAtStartup;
   $('s-reduceMotion').checked = !!settings.reduceMotion;
   $('s-autoUpdateEnabled').checked = settings.autoUpdateEnabled !== false;
+  $('s-collapseOnOutsideClick').checked = settings.collapseOnOutsideClick !== false;
   renderUpdateState(updateState);
   $('s-soundEnabled').checked = !!settings.soundEnabled;
   $('s-soundUi').checked = !!settings.soundUi;
@@ -1019,7 +1038,7 @@ document.querySelectorAll('.stepper-inline').forEach((el) => {
 });
 
 /* ---- interrupteurs ---- */
-['autoStartNext', 'alwaysOnTop', 'launchAtStartup', 'reduceMotion', 'autoUpdateEnabled', 'soundEnabled', 'soundUi', 'soundNotifications', 'soundTimers', 'soundMuteWhenMedia', 'clipboardHistoryEnabled', 'eventRemindersEnabled'].forEach((key) => {
+['autoStartNext', 'alwaysOnTop', 'launchAtStartup', 'reduceMotion', 'autoUpdateEnabled', 'collapseOnOutsideClick', 'soundEnabled', 'soundUi', 'soundNotifications', 'soundTimers', 'soundMuteWhenMedia', 'clipboardHistoryEnabled', 'eventRemindersEnabled'].forEach((key) => {
   $('s-' + key).addEventListener('change', (e) => {
     updateSetting(key, e.target.checked);
     if(key.startsWith('sound')) $('s-soundVolume').closest('.settings-row').classList.toggle('is-disabled', !settings.soundEnabled);

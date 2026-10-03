@@ -21,6 +21,7 @@ const store = new Store({
     pomodorosBeforeLongBreak: 4,
     autoStartNext: false,
     autoUpdateEnabled: true,
+    collapseOnOutsideClick: true,
     soundEnabled: true,
     soundVolume: 60,
     soundUi: false,
@@ -825,6 +826,13 @@ function applyDefaultWindowShape() {
   }]);
 }
 
+// Le clic en dehors du notch traverse la fenêtre (clic-au-travers) : le renderer ne
+// le voit jamais. On détecte donc la perte de focus de la fenêtre, qui survient dès
+// qu'on clique sur une autre application, le bureau ou la barre des tâches.
+// Le glisser natif depuis la Shelf peut faire perdre le focus un instant : on
+// ignore alors les blur pendant quelques secondes.
+let ignoreBlurUntil = 0;
+
 function createNotchWindow() {
   notchWin = new BrowserWindow({
     ...notchWindowBounds(),
@@ -848,6 +856,13 @@ function createNotchWindow() {
       // jouer sans qu'on ait cliqué dans le notch depuis le démarrage.
       autoplayPolicy: 'no-user-gesture-required',
     },
+  });
+
+  notchWin.on('blur', () => {
+    if (!notchWin || notchWin.isDestroyed()) return;
+    if (store.get('collapseOnOutsideClick') === false) return;
+    if (Date.now() < ignoreBlurUntil) return;
+    notchWin.webContents.send('window-blurred');
   });
 
   notchWin.setAlwaysOnTop(store.get('alwaysOnTop'), 'screen-saver');
@@ -1191,6 +1206,7 @@ ipcMain.on('shelf-start-drag', (event, ids) => {
   if (!items.length) return;
   const files = items.map((item) => item.path);
   const icon = shelfIconCache.get(items[0].id) || SHELF_FALLBACK_ICON;
+  ignoreBlurUntil = Date.now() + 3000;
   try {
     notchWin.webContents.startDrag(files.length > 1 ? { files, icon } : { file: files[0], icon });
   } catch (error) {

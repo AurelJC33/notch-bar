@@ -136,3 +136,11 @@ Validation: `npm run check` passes with 17/17 tests. Full `npm run test:browser`
 - **`package.json`** : dépendance `electron-updater`, `build.publish` (GitHub, à renseigner), cible NSIS x64, script `npm run release`, `updater.js` ajouté aux fichiers packagés.
 - **CI** : `.github/workflows/ci.yml` (`npm run check` à chaque push/PR) et `release.yml` (sur tag `v*` : vérifie tag = version, teste, construit, publie, signe si `CSC_LINK` est défini).
 - Procédure complète dans `RELEASING.md`. Tests : `tests/updater.test.mjs`.
+
+## v13 — repli automatique au clic en dehors du notch
+
+- Le clic en dehors de la capsule traverse la fenêtre (clic-au-travers) : le renderer ne le reçoit jamais. `main.js` écoute donc l'évènement `blur` de la fenêtre (clic sur une autre app, le bureau, la barre des tâches, Alt+Tab) et envoie `window-blurred` au renderer.
+- `collapseFromOutsideClick()` replie les modes ouverts (`expanded`, `schedule`, `analytics`, `analytics-expanded`, `settings`, `shelf`) et le panneau média étendu, vers `running` si un outil tourne, sinon `pill`. Les modes déjà compacts ne bougent pas.
+- Garde-fous : aucun repli pendant un glisser vers la Shelf, ni pendant les 3 s qui suivent un glisser natif depuis la Shelf (`startDrag` peut faire perdre le focus un instant).
+- Réglage Paramètres > Behavior > « Collapse on outside click » (`collapseOnOutsideClick`, activé par défaut).
+- Limite : non testé avec Electron ici. Cas à vérifier à la main : Alt+Tab, clic sur la barre des tâches, glisser-déposer vers/depuis la Shelf.
