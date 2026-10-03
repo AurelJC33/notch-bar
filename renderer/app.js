@@ -71,6 +71,89 @@ let updateBannerGlowTimer = null;
 let updateInstallRequested = false;
 let updateInstallInFlight = false;
 
+/* ==================== AUTO-HIDE ====================
+   Réglage « Auto-hide notch » : au repos (mode pill, rien à signaler) le notch
+   glisse hors de l'écran après AUTOHIDE_HIDE_DELAY_MS. Une bande de 4 px en haut
+   de l'écran (#autohide-hotzone) devient alors la SEULE zone interactive de la
+   fenêtre : la souris collée en haut pendant AUTOHIDE_REVEAL_DELAY_MS le fait
+   réapparaître. Il reste affiché tant qu'une autre vue est active (minuteur,
+   rappel, mise à jour, vue ouverte, notification Bluetooth, notch média déplié).
+   L'état « masqué » est un attribut de <body> (data-autohide) : contrairement à
+   une classe, il survit à setMode qui réécrit body.className. */
+const AUTOHIDE_REVEAL_DELAY_MS = 50;
+const AUTOHIDE_HIDE_DELAY_MS = 700;
+let autoHidePointerIn = false;     // souris sur la capsule ou le notch média
+let autoHideHideTimer = null;
+let autoHideRevealTimer = null;
+
+function autoHideIdle(){
+  return !!settings.autoHide && mode === 'pill' && !autoHidePointerIn
+    && body.dataset.accessoryState !== 'visible'
+    && body.dataset.mediaState !== 'expanded';
+}
+
+function autoHideShow(){
+  clearTimeout(autoHideRevealTimer);
+  autoHideRevealTimer = null;
+  if(body.dataset.autohide !== 'away') return;
+  delete body.dataset.autohide;
+  $('autohide-hotzone').hidden = true;
+  syncInteractiveRegion();
+}
+
+function autoHideAwayNow(){
+  autoHideHideTimer = null;
+  if(!autoHideIdle() || body.dataset.autohide === 'away') return;
+  // La bande de réveil épouse la largeur de la capsule, mesurée AVANT de la masquer.
+  const rect = capsuleEl.getBoundingClientRect();
+  const zone = $('autohide-hotzone');
+  zone.style.left = Math.round(rect.left) + 'px';
+  zone.style.width = Math.max(60, Math.round(rect.width)) + 'px';
+  zone.hidden = false;
+  body.dataset.autohide = 'away';
+  syncInteractiveRegion();
+  setWindowMouseIgnored(true, { forward: true });
+}
+
+function autoHideEvaluate(){
+  clearTimeout(autoHideHideTimer);
+  autoHideHideTimer = null;
+  if(autoHideIdle()){
+    if(body.dataset.autohide !== 'away') autoHideHideTimer = setTimeout(autoHideAwayNow, AUTOHIDE_HIDE_DELAY_MS);
+  } else {
+    autoHideShow();
+  }
+}
+
+function autoHideReveal(){
+  autoHideShow();
+  setWindowMouseIgnored(false);
+  if(mode === 'pill') setMode('hover');
+  // Si la souris n'est finalement pas sur la capsule (aucun mouseenter reçu), on
+  // revient à l'état de repos au lieu de laisser la vue survolée ouverte.
+  setTimeout(() => {
+    if(mode === 'hover' && !capsuleEl.matches(':hover')){
+      autoHidePointerIn = false;
+      setMode('pill');
+    }
+  }, 900);
+}
+
+{
+  const zone = $('autohide-hotzone');
+  zone.addEventListener('mouseenter', () => {
+    clearTimeout(autoHideRevealTimer);
+    autoHideRevealTimer = setTimeout(autoHideReveal, AUTOHIDE_REVEAL_DELAY_MS);
+  });
+  zone.addEventListener('mouseleave', () => { clearTimeout(autoHideRevealTimer); autoHideRevealTimer = null; });
+  // Un fichier glissé vers le haut de l'écran (pour la Shelf) réveille le notch tout de suite.
+  zone.addEventListener('dragenter', autoHideReveal);
+  new MutationObserver(() => autoHideEvaluate()).observe(body, {
+    attributes: true,
+    attributeFilter: ['data-accessory-state', 'data-media-state'],
+  });
+}
+
 function setMode(next){
   if(next === mode) return;
   const leaving = mode;
@@ -78,6 +161,7 @@ function setMode(next){
   body.className = 'mode-' + next + (settings.reduceMotion ? ' reduce-motion' : '');
   if(leaving === 'update') onLeaveUpdateMode();
   else if(updateBannerPending && (next === 'pill' || next === 'running')) setTimeout(showPendingUpdateBanner, 1200);
+  autoHideEvaluate();
 }
 
 const capsuleEl = $('capsule');
@@ -109,9 +193,10 @@ function rectForInput(el, pad = 0) {
 
 function syncInteractiveRegion() {
   if(!windowShapeSupported || !window.api.setInteractiveRegion) return;
-  const rects = [rectForInput(capsuleEl, edgePad)];
+  const away = body.dataset.autohide === 'away';
+  const rects = away ? [rectForInput($('autohide-hotzone'))] : [rectForInput(capsuleEl, edgePad)];
   const media = $('media-notch');
-  if(media && !media.hidden) rects.push(rectForInput(media));
+  if(!away && media && !media.hidden) rects.push(rectForInput(media));
   window.api.setInteractiveRegion(rects.filter(Boolean));
 }
 
@@ -147,6 +232,11 @@ capsuleEl.addEventListener('mouseleave', () => {
   setWindowMouseIgnored(true, { forward: true });
   if(mode==='hover') setMode('pill');
 });
+for(const surface of [capsuleEl, $('media-notch')]){
+  if(!surface) continue;
+  surface.addEventListener('mouseenter', () => { autoHidePointerIn = true; autoHideEvaluate(); });
+  surface.addEventListener('mouseleave', () => { autoHidePointerIn = false; autoHideEvaluate(); });
+}
 
 function requestWindowMode(kind){
   // L'IPC ne redimensionne plus la fenêtre native ; on le conserve pour que
@@ -974,6 +1064,7 @@ function applySettings(s){
 
   renderPomo(); renderTimer(); renderStopwatch();
   renderAnalytics();
+  autoHideEvaluate();
 }
 
 let pendingPatch = {};
@@ -1005,6 +1096,10 @@ function populateSettingsUI(){
   $('s-reduceMotion').checked = !!settings.reduceMotion;
   $('s-autoUpdateEnabled').checked = settings.autoUpdateEnabled !== false;
   $('s-collapseOnOutsideClick').checked = settings.collapseOnOutsideClick !== false;
+  $('s-autoHide').checked = !!settings.autoHide;
+  $('s-globalShortcutEnabled').checked = settings.globalShortcutEnabled !== false;
+  renderShortcutSettings();
+  refreshShortcutStatus();
   renderUpdateState(updateState);
   $('s-soundEnabled').checked = !!settings.soundEnabled;
   $('s-soundUi').checked = !!settings.soundUi;
@@ -1051,7 +1146,17 @@ $('btn-close-settings').addEventListener('click', closeSettingsPanel);
 /* ---- icône de la zone de notification : Open / Settings ---- */
 if(window.api.onTrayCommand) window.api.onTrayCommand((command) => {
   setWindowMouseIgnored(false);
-  if(command === 'settings') openSettingsPanel();
+  // Pendant la capture d'une nouvelle combinaison, la combinaison actuelle
+  // déclencherait « toggle » : on l'ignore.
+  if(command === 'toggle' && shortcutCapturing) return;
+  if(mode === 'welcome' && command !== 'toggle') dismissWelcome();
+  if(command === 'toggle'){
+    // Raccourci global : ouvre si compact, replie si ouvert.
+    if(mode === 'welcome') dismissWelcome();
+    else if(OUTSIDE_COLLAPSIBLE_MODES.has(mode)) collapseToCompact();
+    else openCurrentView();
+  }
+  else if(command === 'settings') openSettingsPanel();
   else if(!OUTSIDE_COLLAPSIBLE_MODES.has(mode)) openCurrentView();
 });
 
@@ -1080,6 +1185,7 @@ quitBtn.addEventListener('click', () => {
    eux gèrent Échap (planner.js ferme l'événement / l'éditeur de tâche). */
 document.addEventListener('keydown', (e) => {
   if(e.key !== 'Escape' || e.defaultPrevented) return;
+  if(mode === 'welcome'){ dismissWelcome(); return; }
   if(mode === 'settings'){ closeSettingsPanel(); return; }
   if(e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
   if(!$('event-backdrop').hidden || !$('task-editor-shell').hidden) return;
@@ -1087,6 +1193,126 @@ document.addEventListener('keydown', (e) => {
   if(typeof mediaExpanded !== 'undefined' && mediaExpanded){ setMediaExpanded(false); return; }
   if(OUTSIDE_COLLAPSIBLE_MODES.has(mode)) collapseToCompact();
 });
+
+/* ---- ouvrir les réglages directement sur un groupe (ex. « Add calendar ») ---- */
+window.openSettingsAt = function openSettingsAt(groupId, focusId){
+  openSettingsPanel();
+  setTimeout(() => {
+    const group = $(groupId);
+    const scroller = document.querySelector('.settings-scroll');
+    if(group && scroller){
+      // On règle scrollTop nous-mêmes : scrollIntoView ferait aussi défiler la
+      // capsule (overflow:hidden) et décalerait toute la vue.
+      scroller.scrollTop += group.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 2;
+    }
+    const field = focusId && $(focusId);
+    if(field) field.focus({ preventScroll: true });
+  }, 80);
+};
+$('calendar-empty-action').addEventListener('click', () => window.openSettingsAt('settings-calendars', 'calendar-settings-url'));
+
+/* ==================== ACCUEIL (premier lancement) ====================
+   Vue 'welcome' : la capsule s'agrandit, lueur bleue, et ne se replie pas au clic
+   extérieur (absente de OUTSIDE_COLLAPSIBLE_MODES) : on ne veut pas qu'elle
+   disparaisse avant d'avoir été lue. Fermée par « Got it », Échap, ou le raccourci. */
+function formatAccelerator(accelerator){
+  return String(accelerator || '').replace(/\b(CommandOrControl|CmdOrCtrl|Control)\b/g, 'Ctrl').replace(/\bSuper\b/g, 'Win');
+}
+function renderWelcomeShortcut(){
+  $('welcome-shortcut').textContent = formatAccelerator(settings.globalShortcut || 'Ctrl+Alt+N');
+  $('welcome-shortcut-tip').hidden = settings.globalShortcutEnabled === false;
+}
+function showWelcome(){
+  if(mode === 'welcome') return;
+  renderWelcomeShortcut();
+  requestWindowMode('notch');
+  setEdge('blue', 'spin');
+  setMode('welcome');
+}
+function dismissWelcome(){
+  if(mode !== 'welcome') return;
+  if(window.api.completeOnboarding) window.api.completeOnboarding().catch(() => {});
+  restoreToolEdge();
+  requestWindowMode('notch');
+  setMode(activeTool ? 'running' : 'pill');
+}
+$('welcome-done').addEventListener('click', dismissWelcome);
+$('btn-show-welcome').addEventListener('click', showWelcome);
+if(window.api.getOnboarding){
+  window.api.getOnboarding()
+    .then((state) => { if(state && state.show) setTimeout(showWelcome, 1200); })
+    .catch(() => {});
+}
+
+/* ==================== RACCOURCI CLAVIER GLOBAL ====================
+   Le process principal enregistre la combinaison (shortcut.js valide le format).
+   Ici : affichage, et capture d'une nouvelle combinaison au clic sur le bouton. */
+const shortcutBtn = $('btn-shortcut-capture');
+let shortcutCapturing = false;
+
+function renderShortcutSettings(){
+  shortcutBtn.textContent = shortcutCapturing ? 'Press keys…' : formatAccelerator(settings.globalShortcut || 'Ctrl+Alt+N');
+  shortcutBtn.classList.toggle('capturing', shortcutCapturing);
+  $('shortcut-row').classList.toggle('is-disabled', settings.globalShortcutEnabled === false);
+}
+function setShortcutStatus(text, warn){
+  const el = $('shortcut-status');
+  el.textContent = text || 'Open or collapse the notch from any app';
+  el.classList.toggle('warn', !!warn);
+}
+function refreshShortcutStatus(){
+  if(!window.api.getGlobalShortcutStatus) return;
+  window.api.getGlobalShortcutStatus().then((status) => {
+    if(status && status.enabled && !status.registered) setShortcutStatus('Unavailable: already used by another app. Pick another combination.', true);
+    else setShortcutStatus('');
+  }).catch(() => {});
+}
+// Combinaison pressée -> accélérateur Electron, ou null (touche seule) / 'unsupported'.
+function acceleratorFromEvent(e){
+  if(['Control', 'Shift', 'Alt', 'AltGraph', 'Meta'].includes(e.key)) return null;
+  const mods = [];
+  if(e.ctrlKey) mods.push('Ctrl');
+  if(e.altKey) mods.push('Alt');
+  if(e.shiftKey) mods.push('Shift');
+  if(e.metaKey) mods.push('Super');
+  if(!mods.length) return 'needs-modifier';
+  const named = { ' ': 'Space', ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', Home: 'Home', End: 'End', PageUp: 'PageUp', PageDown: 'PageDown', Insert: 'Insert', Delete: 'Delete', Backspace: 'Backspace', Tab: 'Tab', Enter: 'Enter' };
+  let key = null;
+  if(/^[a-z0-9]$/i.test(e.key)) key = e.key.toUpperCase();
+  else if(/^F([1-9]|1[0-9]|2[0-4])$/.test(e.key)) key = e.key;
+  else if(named[e.key]) key = named[e.key];
+  else if(/^Digit[0-9]$/.test(e.code)) key = e.code.slice(5);
+  if(!key) return 'unsupported';
+  return mods.join('+') + '+' + key;
+}
+function stopShortcutCapture(){
+  shortcutCapturing = false;
+  document.removeEventListener('keydown', onShortcutKeydown, true);
+  renderShortcutSettings();
+}
+function onShortcutKeydown(e){
+  e.preventDefault();
+  e.stopPropagation();
+  if(e.key === 'Escape'){ stopShortcutCapture(); return; }
+  const result = acceleratorFromEvent(e);
+  if(result === null) return; // seulement des modificateurs pour l'instant
+  if(result === 'needs-modifier'){ setShortcutStatus('Hold Ctrl, Alt or Shift while pressing the key.', true); return; }
+  if(result === 'unsupported'){ setShortcutStatus('This key is not supported. Try a letter, digit or F-key.', true); return; }
+  stopShortcutCapture();
+  if(!window.api.setGlobalShortcut) return;
+  window.api.setGlobalShortcut(result).then((res) => {
+    if(res && res.ok){ settings.globalShortcut = res.accelerator; renderShortcutSettings(); setShortcutStatus(''); }
+    else setShortcutStatus('Already used by another app or reserved by Windows. Kept ' + formatAccelerator(res && res.accelerator) + '.', true);
+  }).catch(() => setShortcutStatus('Could not change the shortcut.', true));
+}
+shortcutBtn.addEventListener('click', () => {
+  if(shortcutCapturing){ stopShortcutCapture(); return; }
+  shortcutCapturing = true;
+  renderShortcutSettings();
+  setShortcutStatus('Press the new combination, or Esc to cancel.');
+  document.addEventListener('keydown', onShortcutKeydown, true);
+});
+shortcutBtn.addEventListener('blur', () => { if(shortcutCapturing) stopShortcutCapture(); });
 
 /* ---- steppers (durées pomodoro) ---- */
 document.querySelectorAll('.stepper-inline').forEach((el) => {
@@ -1106,7 +1332,7 @@ document.querySelectorAll('.stepper-inline').forEach((el) => {
 });
 
 /* ---- interrupteurs ---- */
-['autoStartNext', 'alwaysOnTop', 'launchAtStartup', 'reduceMotion', 'autoUpdateEnabled', 'collapseOnOutsideClick', 'soundEnabled', 'soundUi', 'soundNotifications', 'soundTimers', 'soundMuteWhenMedia', 'clipboardHistoryEnabled', 'eventRemindersEnabled'].forEach((key) => {
+['autoStartNext', 'alwaysOnTop', 'launchAtStartup', 'reduceMotion', 'autoUpdateEnabled', 'collapseOnOutsideClick', 'autoHide', 'globalShortcutEnabled', 'soundEnabled', 'soundUi', 'soundNotifications', 'soundTimers', 'soundMuteWhenMedia', 'clipboardHistoryEnabled', 'eventRemindersEnabled'].forEach((key) => {
   $('s-' + key).addEventListener('change', (e) => {
     updateSetting(key, e.target.checked);
     if(key.startsWith('sound')) $('s-soundVolume').closest('.settings-row').classList.toggle('is-disabled', !settings.soundEnabled);

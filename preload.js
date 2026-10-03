@@ -23,6 +23,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('update-state', (event, state) => callback(state));
   },
   quitApp: () => ipcRenderer.send('quit-app'),
+  getOnboarding: () => ipcRenderer.invoke('get-onboarding'),
+  completeOnboarding: () => ipcRenderer.invoke('complete-onboarding'),
+  setGlobalShortcut: (accelerator) => ipcRenderer.invoke('set-global-shortcut', accelerator),
+  getGlobalShortcutStatus: () => ipcRenderer.invoke('get-global-shortcut-status'),
   onTrayCommand: (callback) => {
     ipcRenderer.on('tray-command', (event, command) => callback(command));
   },

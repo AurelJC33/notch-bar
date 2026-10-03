@@ -95,6 +95,10 @@
                 </div>
               </div>
             </header>
+            <div class="calendar-empty" id="calendar-empty">
+              <span>No calendar yet. Add an iCal link or file in Settings.</span>
+              <button class="btn ghost" id="calendar-empty-action" type="button">Add calendar</button>
+            </div>
             <div class="calendar-stage" id="calendar-stage"></div>
             <div class="calendar-footer">
               <button class="toolbar-btn calendar-today-btn" id="calendar-today">Today</button>
@@ -288,6 +292,20 @@
       <div class="update-progress" id="update-progress" hidden><span id="update-progress-bar"></span></div>
     </div>
 
+    <!-- Accueil du premier lancement (aussi : Réglages > Help > Welcome tour) -->
+    <div class="view" id="view-welcome" role="dialog" aria-label="Welcome to Notch Bar">
+      <div class="welcome-card">
+        <div class="welcome-title">Welcome to Notch Bar</div>
+        <ul class="welcome-tips">
+          <li>Hover the notch to see your pinned pages.</li>
+          <li>Click it to open the full app. Press Esc to collapse.</li>
+          <li id="welcome-shortcut-tip">Press <kbd id="welcome-shortcut">Ctrl+Alt+N</kbd> from any app to open or collapse it.</li>
+          <li>Right-click the tray icon (next to the clock) for Settings or Quit.</li>
+        </ul>
+        <button class="btn primary" id="welcome-done" type="button">Got it</button>
+      </div>
+    </div>
+
     <!-- État compact pendant qu'un minuteur tourne -->
     <div class="view" id="view-running">
       <span class="icon" id="run-icon" data-icon="focus"></span>
@@ -394,6 +412,38 @@
           </div>
         </div>
 
+        <div class="settings-group">
+          <div class="settings-group-title">Behavior</div>
+          <div class="settings-row">
+            <span class="row-label">Collapse on outside click</span>
+            <label class="switch"><input type="checkbox" id="s-collapseOnOutsideClick"><span class="switch-track"></span></label>
+          </div>
+          <div class="settings-row">
+            <span class="row-label">Auto-hide notch<small class="row-sub">Hidden until you push the mouse against the top of the screen</small></span>
+            <label class="switch"><input type="checkbox" id="s-autoHide"><span class="switch-track"></span></label>
+          </div>
+          <div class="settings-row">
+            <span class="row-label">Global shortcut<small class="row-sub" id="shortcut-status">Open or collapse the notch from any app</small></span>
+            <label class="switch"><input type="checkbox" id="s-globalShortcutEnabled"><span class="switch-track"></span></label>
+          </div>
+          <div class="settings-row" id="shortcut-row">
+            <span class="row-label">Shortcut keys</span>
+            <button class="btn ghost shortcut-capture" id="btn-shortcut-capture" type="button" title="Click, then press the new key combination">Ctrl+Alt+N</button>
+          </div>
+          <div class="settings-row">
+            <span class="row-label">Always on top</span>
+            <label class="switch"><input type="checkbox" id="s-alwaysOnTop"><span class="switch-track"></span></label>
+          </div>
+          <div class="settings-row">
+            <span class="row-label">Launch at startup</span>
+            <label class="switch"><input type="checkbox" id="s-launchAtStartup"><span class="switch-track"></span></label>
+          </div>
+          <div class="settings-row">
+            <span class="row-label">Reduce motion</span>
+            <label class="switch"><input type="checkbox" id="s-reduceMotion"><span class="switch-track"></span></label>
+          </div>
+        </div>
+
         <div class="settings-group pinned-pages-settings">
           <div class="settings-group-title">Pinned pages</div>
           <div class="settings-row column">
@@ -403,7 +453,7 @@
           </div>
         </div>
 
-        <div class="settings-group">
+        <div class="settings-group" id="settings-calendars">
           <div class="settings-group-title">Calendars</div>
           <div class="settings-row column calendar-sources-settings">
             <span class="row-label">iCal sources</span>
@@ -433,26 +483,6 @@
               <span class="step-value" data-value>10 min</span>
               <button class="step-btn" data-delta="1">+</button>
             </div>
-          </div>
-        </div>
-
-        <div class="settings-group">
-          <div class="settings-group-title">Behavior</div>
-          <div class="settings-row">
-            <span class="row-label">Collapse on outside click</span>
-            <label class="switch"><input type="checkbox" id="s-collapseOnOutsideClick"><span class="switch-track"></span></label>
-          </div>
-          <div class="settings-row">
-            <span class="row-label">Always on top</span>
-            <label class="switch"><input type="checkbox" id="s-alwaysOnTop"><span class="switch-track"></span></label>
-          </div>
-          <div class="settings-row">
-            <span class="row-label">Launch at startup</span>
-            <label class="switch"><input type="checkbox" id="s-launchAtStartup"><span class="switch-track"></span></label>
-          </div>
-          <div class="settings-row">
-            <span class="row-label">Reduce motion</span>
-            <label class="switch"><input type="checkbox" id="s-reduceMotion"><span class="switch-track"></span></label>
           </div>
         </div>
 
@@ -488,6 +518,14 @@
         </div>
 
         <div class="settings-group">
+          <div class="settings-group-title">Privacy</div>
+          <div class="settings-row">
+            <span class="row-label">Clipboard history</span>
+            <label class="switch"><input type="checkbox" id="s-clipboardHistoryEnabled"><span class="switch-track"></span></label>
+          </div>
+        </div>
+
+        <div class="settings-group">
           <div class="settings-group-title">Updates</div>
           <div class="settings-row">
             <span class="row-label">Automatic updates</span>
@@ -503,10 +541,10 @@
         </div>
 
         <div class="settings-group">
-          <div class="settings-group-title">Privacy</div>
+          <div class="settings-group-title">Help</div>
           <div class="settings-row">
-            <span class="row-label">Clipboard history</span>
-            <label class="switch"><input type="checkbox" id="s-clipboardHistoryEnabled"><span class="switch-track"></span></label>
+            <span class="row-label">Welcome tour</span>
+            <button class="btn ghost" id="btn-show-welcome" type="button">Show</button>
           </div>
         </div>
 
@@ -568,6 +606,8 @@
     </section>
   </div>
 
+<!-- Auto-hide : bande de 4 px en haut de l'écran, seule zone interactive quand le notch est masqué. -->
+<div id="autohide-hotzone" hidden aria-hidden="true"></div>
 <script src="icons.js"></script>
 <script src="analytics-engine.js"></script>
 <script src="sound-assets.js"></script>

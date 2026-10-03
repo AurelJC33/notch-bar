@@ -90,6 +90,13 @@ function setCalendarSources(sources) {
     return normalized;
   }).filter(Boolean);
   state.events = mergeEnabledCalendarEvents(state.calendarSources);
+  renderCalendarEmptyState();
+}
+
+// Bandeau visible par défaut (aucune source) ; masqué dès qu'un calendrier existe.
+function renderCalendarEmptyState() {
+  const banner = document.getElementById('calendar-empty');
+  if (banner) banner.hidden = state.calendarSources.length > 0;
 }
 
 async function persistCalendarSources() {

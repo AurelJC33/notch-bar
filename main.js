@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, shell, nativeImage, clipboard, Tray, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, shell, nativeImage, clipboard, Tray, Menu, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -8,11 +8,16 @@ const Store = require('electron-store');
 const { WindowsMediaService } = require('./media-service');
 const { createUpdater } = require('./updater');
 const { sanitizeSnapshot, isSnapshotFresh } = require('./resume-state');
+const { DEFAULT_GLOBAL_SHORTCUT, isValidAccelerator } = require('./shortcut');
 
 // Une seule instance : un second lancement créerait un deuxième notch, un
 // deuxième sondeur de presse-papiers et un deuxième process PowerShell.
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) app.quit();
+
+// Lu AVANT la création du store (qui écrit son fichier) : sert à n'afficher
+// l'accueil qu'aux nouvelles installations, pas à une mise à jour.
+const configAlreadyExisted = fs.existsSync(path.join(app.getPath('userData'), 'config.json'));
 
 const store = new Store({
   defaults: {
@@ -38,6 +43,9 @@ const store = new Store({
     eventRemindersEnabled: false,
     eventReminderMinutes: 10,
     pinnedPages: ['pomodoro', 'schedule', 'timer', 'stopwatch'],
+    autoHide: false,
+    globalShortcutEnabled: true,
+    globalShortcut: DEFAULT_GLOBAL_SHORTCUT,
   },
 });
 
@@ -954,6 +962,72 @@ function destroyTray() {
 // Bouton « Quit Notch » des réglages (la confirmation se fait côté renderer).
 ipcMain.on('quit-app', () => app.quit());
 
+/* ---------------- Raccourci clavier global ----------------
+ * Ouvre / replie le notch depuis n'importe quelle application. Enregistré au
+ * démarrage et à chaque changement des réglages ; si la combinaison est déjà
+ * prise par une autre app, l'enregistrement échoue sans planter et le
+ * renderer l'affiche dans Réglages > Behavior. */
+let registeredShortcut = null;
+
+function unregisterGlobalShortcut() {
+  if (registeredShortcut) {
+    try { globalShortcut.unregister(registeredShortcut); } catch { /* déjà libéré */ }
+    registeredShortcut = null;
+  }
+}
+
+function tryRegisterShortcut(accelerator) {
+  try { return globalShortcut.register(accelerator, () => showNotchFromTray('toggle')); }
+  catch { return false; }
+}
+
+function applyGlobalShortcut() {
+  unregisterGlobalShortcut();
+  if (store.get('globalShortcutEnabled') === false) return false;
+  const accelerator = store.get('globalShortcut');
+  if (!isValidAccelerator(accelerator)) return false;
+  if (!tryRegisterShortcut(accelerator)) return false;
+  registeredShortcut = accelerator;
+  return true;
+}
+
+ipcMain.handle('get-global-shortcut-status', () => ({
+  enabled: store.get('globalShortcutEnabled') !== false,
+  accelerator: store.get('globalShortcut'),
+  registered: !!registeredShortcut,
+}));
+
+// Changement de combinaison depuis les réglages : on essaie la nouvelle, et on
+// remet l'ancienne si elle est refusée (déjà utilisée, ou réservée par Windows).
+ipcMain.handle('set-global-shortcut', (event, accelerator) => {
+  const previous = store.get('globalShortcut');
+  if (!isValidAccelerator(accelerator)) return { ok: false, error: 'invalid', accelerator: previous };
+  if (store.get('globalShortcutEnabled') !== false) {
+    unregisterGlobalShortcut();
+    if (!tryRegisterShortcut(accelerator)) {
+      if (isValidAccelerator(previous) && tryRegisterShortcut(previous)) registeredShortcut = previous;
+      return { ok: false, error: 'in-use', accelerator: previous };
+    }
+    registeredShortcut = accelerator;
+  }
+  store.set('globalShortcut', accelerator);
+  if (notchWin && !notchWin.isDestroyed()) notchWin.webContents.send('settings-updated', store.store);
+  return { ok: true, accelerator };
+});
+
+/* ---------------- Accueil (premier lancement) ----------------
+ * Stocké à part des réglages : « Reset settings » ne doit pas relancer l'accueil.
+ * Une installation déjà utilisée avant cette version est marquée « vue » : seul
+ * un tout premier lancement affiche l'accueil. NOTCH_FORCE_WELCOME=1 le force. */
+const appStateStore = new Store({ name: 'app-state', defaults: {} });
+if (appStateStore.get('onboardingDone') === undefined) {
+  appStateStore.set('onboardingDone', configAlreadyExisted);
+}
+ipcMain.handle('get-onboarding', () => ({
+  show: !!process.env.NOTCH_FORCE_WELCOME || appStateStore.get('onboardingDone') === false,
+}));
+ipcMain.handle('complete-onboarding', () => { appStateStore.set('onboardingDone', true); return true; });
+
 /* ---------------- IPC ----------------
  * Le panneau de réglages n'est plus une fenêtre Electron séparée : il vit
  * dans le même renderer que le notch, comme une vue de plus dans #capsule
@@ -1028,12 +1102,14 @@ ipcMain.handle('save-settings', (event, partial) => {
   if ('launchAtStartup' in partial) {
     app.setLoginItemSettings({ openAtLogin: !!partial.launchAtStartup });
   }
+  if ('globalShortcutEnabled' in partial || 'globalShortcut' in partial) applyGlobalShortcut();
   if (notchWin) notchWin.webContents.send('settings-updated', store.store);
   return store.store;
 });
 
 ipcMain.handle('reset-settings', () => {
   store.clear();
+  applyGlobalShortcut();
   clipboardHistoryEnabled = store.get('clipboardHistoryEnabled') !== false;
   if (notchWin) notchWin.webContents.send('settings-updated', store.store);
   return store.store;
@@ -1407,6 +1483,7 @@ app.whenReady().then(() => {
   if (!gotSingleInstanceLock) return;
   createNotchWindow();
   createTray();
+  applyGlobalShortcut();
   setupUpdater();
   app.setLoginItemSettings({ openAtLogin: !!store.get('launchAtStartup') });
   startWeatherLoop();
@@ -1426,6 +1503,7 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   appIsQuitting = true;
+  unregisterGlobalShortcut();
   destroyTray();
   clearInterval(mediaRecoveryTimer);
   mediaRecoveryTimer = null;

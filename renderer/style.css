@@ -24,6 +24,7 @@
   --w-settings:380px; --h-settings:540px;
   --w-schedule:min(1160px, 100vw); --h-schedule:min(760px, 100vh);
   --w-update:340px;   --h-update:68px;
+  --w-welcome:380px;  --h-welcome:262px;
 
   --capsule-ease: cubic-bezier(.2,.82,.2,1);
   --capsule-dur: .38s;
@@ -80,6 +81,9 @@ body.mode-settings #capsule{ width:min(var(--w-settings),100vw); height:min(var(
 body.mode-schedule #capsule{ width:var(--w-schedule); height:var(--h-schedule); }
 body.mode-pill[data-accessory-state="visible"] #capsule{
   width:var(--w-pill-device); height:var(--h-pill-device);
+}
+body.mode-welcome #capsule{
+  width:var(--w-welcome); height:var(--h-welcome);
 }
 body.mode-update #capsule{
   width:var(--w-update); height:var(--h-update);
@@ -179,6 +183,7 @@ body.mode-analytics-expanded .view#view-expanded{
   opacity:1; pointer-events:auto; transform:translateY(0) scale(1); --view-delay:.09s;
 }
 body.mode-update .view#view-update{ opacity:1; pointer-events:auto; transform:translateY(0) scale(1); --view-delay:.09s; }
+body.mode-welcome .view#view-welcome{ opacity:1; pointer-events:auto; transform:translateY(0) scale(1); --view-delay:.09s; }
 body.reduce-motion .view{ transition:none; }
 
 .icon{ width:15px; height:15px; flex:none; }
@@ -2330,7 +2335,8 @@ body.mode-schedule[data-media-state="expanded"]{
 #capsule{
   transition:width var(--capsule-dur) var(--capsule-ease),
              height var(--capsule-dur) var(--capsule-ease),
-             transform .42s var(--capsule-ease);
+             transform .42s var(--capsule-ease),
+             translate .32s var(--capsule-ease);
 }
 body[data-media-state="expanded"] #capsule{
   transform:translateX(calc(-1 * var(--media-group-shift))) translateZ(0);
@@ -2353,7 +2359,8 @@ body.reduce-motion #capsule{ transition:none; }
              width .42s var(--capsule-ease),
              height .42s var(--capsule-ease),
              border-radius .3s ease,
-             opacity .2s ease;
+             opacity .2s ease,
+             translate .32s var(--capsule-ease);
 }
 #media-notch[hidden]{ display:none; }
 body[data-media-state="expanded"] #media-notch{
@@ -2676,3 +2683,35 @@ body.reduce-motion #media-notch .media-source{
 .update-progress{ position:absolute; left:0; right:0; bottom:0; height:2px; background:color-mix(in srgb,var(--accent) 16%,transparent); }
 .update-progress span{ display:block; height:100%; width:0; background:var(--accent); transition:width .25s ease; }
 body.reduce-motion .update-progress span{ transition:none; }
+
+/* ==================== AUTO-HIDE ==================== */
+/* data-autohide="away" est posé sur <body> par app.js (un attribut survit aux
+   changements de classe mode-xxx). 8 px de plus que la hauteur : rien ne dépasse. */
+body[data-autohide="away"] #capsule,
+body[data-autohide="away"] #media-notch{ translate:0 calc(-100% - 8px); }
+body[data-autohide="away"] #capsule{ pointer-events:none; }
+body.reduce-motion #capsule, body.reduce-motion #media-notch{ transition:none; }
+#autohide-hotzone{ position:fixed; top:0; z-index:60; height:4px; background:transparent; }
+#autohide-hotzone[hidden]{ display:none; }
+
+/* ==================== RÉGLAGES : sous-textes et raccourci ==================== */
+.row-sub{ display:block; margin-top:2px; font-size:10px; font-weight:400; line-height:1.3; color:var(--sub); }
+.row-sub.warn{ color:var(--orange); }
+.shortcut-capture{ min-width:96px; flex:none; font-variant-numeric:tabular-nums; }
+.shortcut-capture.capturing{ border-color:var(--accent); color:var(--accent); }
+.settings-row.is-disabled .shortcut-capture{ opacity:.4; pointer-events:none; }
+
+/* ==================== ACCUEIL ==================== */
+#view-welcome{ height:var(--h-welcome); }
+.welcome-card{ width:100%; height:100%; box-sizing:border-box; padding:18px 22px 16px; display:flex; flex-direction:column; gap:10px; }
+.welcome-title{ font-size:15px; font-weight:700; letter-spacing:.01em; }
+.welcome-tips{ list-style:none; margin:0; padding:0; display:grid; gap:9px; counter-reset:tip; flex:1; align-content:center; }
+.welcome-tips li{ display:flex; gap:10px; align-items:flex-start; font-size:12.5px; line-height:1.35; color:var(--text); counter-increment:tip; }
+.welcome-tips li::before{ content:counter(tip); flex:none; width:18px; height:18px; margin-top:0; border-radius:50%; background:var(--accent); color:#fff; font-size:10.5px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+.welcome-tips kbd{ font-family:inherit; font-size:11px; font-weight:650; background:var(--panel2); border:1px solid var(--border); border-radius:6px; padding:1px 6px; white-space:nowrap; }
+.welcome-card .btn{ align-self:flex-end; }
+
+/* ==================== CALENDRIER : état vide ==================== */
+.calendar-empty{ flex:none; display:flex; align-items:center; justify-content:space-between; gap:10px; margin:0 0 8px; padding:6px 6px 6px 11px; background:var(--panel2); border:1px solid var(--border); border-radius:10px; font-size:11.5px; color:var(--sub); }
+.calendar-empty[hidden]{ display:none; }
+.calendar-empty .btn{ flex:none; padding:5px 10px; font-size:11px; }

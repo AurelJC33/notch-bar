@@ -183,3 +183,12 @@ Validation: `npm run check` passes with 17/17 tests. Full `npm run test:browser`
 - Timer: preset chips (5 / 10 / 15 / 25 / 45 min) and direct typing of the duration by clicking the time ("45", "5:30", "1:30:00", "90s"). Invalid input is outlined in red and Escape cancels. Parsing lives in `renderer/duration-input.js` (unit tested).
 - Pomodoro: new Skip button (Reset | Skip | Start). Skipping a focus session records it as interrupted (it is not counted as completed) and goes to the short break; skipping a break goes back to focus. Skip never changes whether the timer is running.
 - Added tests/ergonomics.test.mjs.
+
+## v1.5.0 — Welcome, calendar empty state, settings order, global shortcut, auto-hide
+
+- First-launch welcome: the capsule expands with four tips (hover, click, shortcut, tray icon). Stored apart from the settings (new `app-state` store) so "Reset settings" does not bring it back; existing installs are marked as seen. Replay it from Settings > Help > Welcome tour; `NOTCH_FORCE_WELCOME=1` forces it for testing.
+- Calendar tab with no calendar: an "Add calendar" banner opens Settings scrolled to the Calendars group with the URL field focused.
+- Settings regrouped by frequency of use: Pomodoro, Appearance, Behavior, Pinned pages, Calendars, Reminders, Sound, Privacy, Updates, Help.
+- Global keyboard shortcut (default Ctrl+Alt+N) opens the notch or collapses it from any app; it can be disabled or changed in Behavior (click the key box, press the new combination). A combination refused by the OS is reported and the previous one is kept. Validation lives in `shortcut.js` (unit tested).
+- Auto-hide notch (Behavior): the idle notch slides off-screen; pushing the mouse against the top of the screen for 50 ms brings it back. While hidden, only a 4 px strip at the top is interactive. It stays visible during timers, reminders, updates, Bluetooth notifications and any open view. The global shortcut and the tray icon also reveal it.
+- Added tests/onboarding-autohide.test.mjs.
