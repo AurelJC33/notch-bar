@@ -6,7 +6,7 @@
   "scripts": {
     "start": "electron .",
     "build": "electron-builder --win",
-    "test": "node --test tests/*.test.mjs",
+    "test": "node tools/run-tests.mjs",
     "test:browser": "electron tests/electron-smoke.cjs",
     "check": "node --check main.js && node --check preload.js && node --check media-service.js && node --check updater.js && node --check renderer/app.js && node --check renderer/planner.js && node --check renderer/calendar-engine.js && node --check renderer/calendar-sources.js && node --check renderer/icons.js && node --check renderer/analytics-engine.js && node --check renderer/sound-engine.js && npm run test",
     "release": "electron-builder --win --publish always"
