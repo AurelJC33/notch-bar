@@ -144,3 +144,15 @@ Validation: `npm run check` passes with 17/17 tests. Full `npm run test:browser`
 - Garde-fous : aucun repli pendant un glisser vers la Shelf, ni pendant les 3 s qui suivent un glisser natif depuis la Shelf (`startDrag` peut faire perdre le focus un instant).
 - Réglage Paramètres > Behavior > « Collapse on outside click » (`collapseOnOutsideClick`, activé par défaut).
 - Limite : non testé avec Electron ici. Cas à vérifier à la main : Alt+Tab, clic sur la barre des tâches, glisser-déposer vers/depuis la Shelf.
+
+## v1.1.0 — Mise à jour dans le notch + reprise des minuteurs
+
+- Quand une version est disponible, la capsule s'agrandit avec une lueur courte (un tour de liseré + halo) et un son discret (`updateAvailable`, même timbre que « connect ») : « Version x.y.z available — Click here to download and restart ».
+- Un clic télécharge la mise à jour GitHub (barre de progression dans la capsule), installe en silence et relance Notch. La croix en haut repousse à plus tard (Settings > Updates reste disponible).
+- L'annonce ne coupe jamais une vue ouverte (Calendar, Settings, Shelf…) : elle attend le prochain retour à la vue compacte.
+- `updater.js`: plus de téléchargement automatique ni d'installation à la fermeture ; nouvel état `available`, nouvelle action `download()`, retry après un échec de téléchargement.
+- Nouveau `resume-state.js`: instantané validé des minuteurs (Pomodoro : phase, temps restant, cycle, session analytics ; Timer ; Stopwatch), écrit juste avant l'installation, relu une seule fois au redémarrage (10 min maximum) et supprimé aussitôt.
+- Le temps restant est figé à l'instant de l'installation : la durée du redémarrage ne compte pas.
+- Ajout de la classe CSS `.edge-accent` (le liseré « accent » des rappels calendrier n'avait pas de couleur définie).
+- Test local sans release : `NOTCH_FAKE_UPDATE=1` (voir RELEASING.md).
+- Tests : updater réécrit, nouveau `tests/resume-state.test.mjs` (validation, expiration, capture/restauration exécutées sur le vrai code du renderer).

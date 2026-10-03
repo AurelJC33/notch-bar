@@ -13,6 +13,7 @@
     timerDone: 'timers',
     pomoFocusEnd: 'timers',
     pomoBreakEnd: 'timers',
+    updateAvailable: 'notifications',
   };
 
   const CATEGORY_SETTING = {
@@ -31,7 +32,7 @@
   };
 
   // Niveau relatif par son : le tick reste bien en dessous des alertes.
-  const SOUND_LEVEL = { tick: 0.35 };
+  const SOUND_LEVEL = { tick: 0.35, updateAvailable: 0.7 };
 
   const MIN_REPLAY_MS = 80;
 

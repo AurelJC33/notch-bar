@@ -61,10 +61,23 @@ window.addEventListener('error', (event) => {
    sur width/height dans style.css) qui anime la capsule. La fenêtre
    Electron, elle, ne bouge plus jamais (voir main.js) — plus de décalage
    ni de "téléportation" liés à un redimensionnement natif de fenêtre. */
+/* État de la bannière « mise à jour disponible » (voir la section MISES À JOUR plus bas).
+   Déclaré ici pour que setMode puisse le lire dès le premier appel. */
+const UPDATE_BANNER_MODES = new Set(['pill', 'hover', 'running']); // vues compactes : on n'interrompt jamais une vue ouverte
+let updateBannerVersion = null;   // dernière version annoncée : une seule annonce par version et par session
+let updateBannerVisible = false;
+let updateBannerPending = false;  // annonce reportée : l'utilisateur est dans une vue ouverte
+let updateBannerGlowTimer = null;
+let updateInstallRequested = false;
+let updateInstallInFlight = false;
+
 function setMode(next){
   if(next === mode) return;
+  const leaving = mode;
   mode = next;
   body.className = 'mode-' + next + (settings.reduceMotion ? ' reduce-motion' : '');
+  if(leaving === 'update') onLeaveUpdateMode();
+  else if(updateBannerPending && (next === 'pill' || next === 'running')) setTimeout(showPendingUpdateBanner, 1200);
 }
 
 const capsuleEl = $('capsule');
@@ -1055,34 +1068,225 @@ $('s-soundVolume').addEventListener('input', (e) => {
 $('s-soundVolume').addEventListener('change', () => playSound('reminder', { force: true }));
 
 
-/* ---- mises à jour (état piloté par le process principal, voir updater.js) ---- */
+/* ==================== MISES À JOUR ====================
+   État piloté par le process principal (voir updater.js). Parcours :
+   annonce (capsule agrandie, lueur courte, son)  ->  clic  ->  téléchargement  ->
+   instantané des minuteurs  ->  installation + redémarrage  ->  reprise des minuteurs. */
 let updateState = { status: 'disabled', version: '', percent: 0 };
 function updateStatusText(state){
+  const v = 'v' + (state.availableVersion || '');
   switch(state.status){
     case 'checking': return 'Checking for updates…';
-    case 'downloading': return `Downloading v${state.availableVersion || ''} — ${state.percent || 0}%`;
-    case 'downloaded': return `v${state.availableVersion || ''} is ready. It installs when you quit, or restart now.`;
+    case 'available': return v + ' is available. Download it and restart Notch.';
+    case 'downloading': return 'Downloading ' + v + ' — ' + (state.percent || 0) + '%';
+    case 'downloaded': return v + ' is ready. Restarting resumes your timers.';
     case 'uptodate': return 'You are up to date.';
     case 'error': return state.error || 'Update check failed.';
     case 'disabled': return 'Updates are disabled in development builds.';
     default: return 'Updates are checked automatically.';
   }
 }
+function updateCanDownload(state){
+  return state.status === 'available' || (state.status === 'error' && !!state.availableVersion);
+}
 function renderUpdateState(state){
   updateState = state || updateState;
   const action = $('update-action');
-  $('update-version').textContent = updateState.version ? `Version ${updateState.version}` : 'Version —';
+  $('update-version').textContent = updateState.version ? 'Version ' + updateState.version : 'Version —';
   $('update-status').textContent = updateStatusText(updateState);
-  const downloaded = updateState.status === 'downloaded';
-  action.textContent = downloaded ? 'Restart to update' : 'Check now';
+  action.textContent = updateState.status === 'downloaded'
+    ? 'Restart to update'
+    : (updateCanDownload(updateState) ? 'Download & restart' : 'Check now');
   action.disabled = ['checking', 'downloading', 'disabled'].includes(updateState.status);
 }
 $('update-action').addEventListener('click', () => {
-  if(updateState.status === 'downloaded') window.api.installUpdate();
+  if(updateState.status === 'downloaded') installUpdateNow();
+  else if(updateCanDownload(updateState)) requestUpdateDownload();
   else window.api.checkForUpdates();
 });
-if(window.api.onUpdateState) window.api.onUpdateState(renderUpdateState);
-if(window.api.getUpdateState) window.api.getUpdateState().then(renderUpdateState).catch(() => {});
+
+/* ---- reprise des minuteurs : instantané juste avant l'installation, relu après le redémarrage ----
+   On fige le temps restant à l'instant de l'installation et on repart de là : la durée du
+   redémarrage ne compte donc ni contre le Pomodoro ni contre le Timer. */
+/* @resume-begin */
+function captureToolsSnapshot(){
+  pomoSyncRemaining();
+  timerSyncRemaining();
+  let session = null;
+  if(pomoSession){
+    // Lecture sans effet de bord : si l'installation échoue, les minuteurs continuent normalement.
+    const live = pomoSession.runningSinceMs ? Math.max(0, (Date.now() - pomoSession.runningSinceMs) / 1000) : 0;
+    session = {
+      startedAt: pomoSession.startedAt,
+      startedAtMs: pomoSession.startedAtMs,
+      durationSeconds: pomoSession.durationSeconds,
+      elapsedSeconds: Math.min(pomoSession.durationSeconds, pomoSession.elapsedSeconds + live),
+    };
+  }
+  return {
+    pomodoro: { phase: pomo.phase, remaining: pomo.remaining, running: !!pomo.running, count: pomo.count, session },
+    timer: { minutes: timer.minutes, seconds: timer.seconds, remaining: timer.remaining, running: !!timer.running },
+    stopwatch: { elapsedMs: sw.running ? Math.max(0, Date.now() - sw.startedAt) : sw.elapsedMs, running: !!sw.running },
+  };
+}
+
+function restoreToolsSnapshot(snapshot){
+  if(!snapshot) return;
+  const p = snapshot.pomodoro, t = snapshot.timer, s = snapshot.stopwatch;
+  if(p){
+    pomo.phase = p.phase;
+    pomo.count = p.count;
+    pomo.remaining = p.remaining;
+    pomoSession = p.session ? { ...p.session, runningSinceMs: 0 } : null;
+  }
+  if(t){
+    timer.minutes = t.minutes;
+    timer.seconds = t.seconds;
+    timer.remaining = t.remaining;
+  }
+  if(s) sw.elapsedMs = s.elapsedMs;
+  renderPomo(); renderTimer(); renderStopwatch();
+  // Un seul outil tourne à la fois : on relance celui qui tournait (ça rouvre aussi la vue compacte).
+  if(p && p.running) pomoStart();
+  else if(t && t.running) timerStart();
+  else if(s && s.running) swStart();
+}
+/* @resume-end */
+
+function resumeToolsAfterUpdate(){
+  if(!window.api.takeResumeState) return;
+  window.api.takeResumeState().then((snapshot) => { if(snapshot) restoreToolsSnapshot(snapshot); }).catch(() => {});
+}
+
+/* ---- clic sur la bannière / le bouton des réglages ---- */
+function requestUpdateDownload(){
+  if(!window.api.downloadUpdate) return;
+  updateInstallRequested = true; // dès que le téléchargement est fini, on installe sans redemander
+  window.api.downloadUpdate()
+    .then((started) => { if(!started) updateInstallRequested = false; })
+    .catch(() => { updateInstallRequested = false; });
+}
+
+async function installUpdateNow(){
+  if(updateInstallInFlight) return;
+  updateInstallInFlight = true;
+  updateInstallRequested = false;
+  try {
+    const ok = await window.api.installUpdate(captureToolsSnapshot());
+    if(!ok) updateInstallInFlight = false; // sinon l'app se ferme : on ne touche plus à rien
+  } catch {
+    updateInstallInFlight = false;
+  }
+}
+
+/* ---- bannière dans le notch ---- */
+function restoreToolEdge(){
+  if(activeTool === 'pomodoro'){ const [c, k] = pomoEdge(pomo.phase); setEdge(c, k); }
+  else if(activeTool === 'timer') setEdge('amber', 'pulse');
+  else if(activeTool === 'stopwatch') setEdge('neutral', 'pulse');
+  else setEdge(null);
+}
+
+function setUpdateBannerContent(state){
+  const title = $('update-card-title');
+  const sub = $('update-card-sub');
+  let progress = null;
+  let busy = false;
+  switch(state.status){
+    case 'downloading':
+      title.textContent = 'Downloading update…';
+      sub.textContent = (state.percent || 0) + '%';
+      progress = state.percent || 0;
+      busy = true;
+      break;
+    case 'downloaded':
+      title.textContent = 'Restarting…';
+      sub.textContent = 'Your timers will pick up where they were';
+      progress = 100;
+      busy = true;
+      break;
+    case 'error':
+      title.textContent = 'Update failed';
+      sub.textContent = 'Click here to try again';
+      break;
+    default:
+      title.textContent = (state.availableVersion ? 'Version ' + state.availableVersion : 'A new version') + ' available';
+      sub.textContent = 'Click here to download and restart';
+  }
+  $('update-progress').hidden = progress === null;
+  if(progress !== null) $('update-progress-bar').style.width = progress + '%';
+  $('update-dismiss').hidden = busy;
+  $('update-card').disabled = busy;
+}
+
+function showUpdateBanner(){
+  if(updateBannerVisible) return;
+  updateBannerPending = false;
+  updateBannerVisible = true;
+  setUpdateBannerContent(updateState);
+  setMode('update');
+  // Lueur courte : un seul tour de liseré (2,6 s), puis on rend le liseré à l'outil en cours.
+  setEdge('accent', settings.reduceMotion ? 'pulse' : 'spin');
+  clearTimeout(updateBannerGlowTimer);
+  updateBannerGlowTimer = setTimeout(() => {
+    updateBannerGlowTimer = null;
+    if(updateBannerVisible && edgeColor === 'accent') restoreToolEdge();
+  }, 2600);
+  playSound('updateAvailable');
+}
+
+function showPendingUpdateBanner(){
+  if(!updateBannerPending || updateBannerVisible) return;
+  if(!UPDATE_BANNER_MODES.has(mode)) return; // toujours dans une vue ouverte : on réessaiera au prochain repli
+  showUpdateBanner();
+}
+
+function onLeaveUpdateMode(){
+  if(!updateBannerVisible) return;
+  updateBannerVisible = false;
+  clearTimeout(updateBannerGlowTimer);
+  updateBannerGlowTimer = null;
+  if(edgeColor === 'accent') restoreToolEdge();
+}
+
+function hideUpdateBanner(){
+  if(mode !== 'update'){ onLeaveUpdateMode(); return; }
+  requestWindowMode('notch');
+  setMode(activeTool ? 'running' : 'pill'); // setMode appelle onLeaveUpdateMode()
+}
+
+function syncUpdateBanner(state){
+  if(!state) return;
+  if(state.status === 'available'){
+    if(state.availableVersion && state.availableVersion === updateBannerVersion){
+      if(updateBannerVisible) setUpdateBannerContent(state);
+      return; // déjà annoncée (ou repoussée avec la croix) pendant cette session
+    }
+    updateBannerVersion = state.availableVersion;
+    if(UPDATE_BANNER_MODES.has(mode)) showUpdateBanner();
+    else updateBannerPending = true; // on ne ferme jamais le Calendar / les Settings sous les doigts de l'utilisateur
+    return;
+  }
+  if(updateBannerVisible) setUpdateBannerContent(state);
+  if(state.status === 'error') updateInstallRequested = false;
+  if(state.status === 'downloaded' && updateInstallRequested) installUpdateNow();
+}
+
+$('update-card').addEventListener('click', (event) => {
+  event.stopPropagation();
+  if(updateCanDownload(updateState)) requestUpdateDownload();
+});
+$('update-dismiss').addEventListener('click', (event) => {
+  event.stopPropagation();
+  hideUpdateBanner(); // « plus tard » : la mise à jour reste disponible dans Settings > Updates
+});
+
+function onUpdateStateChanged(state){
+  renderUpdateState(state);
+  syncUpdateBanner(state);
+}
+if(window.api.onUpdateState) window.api.onUpdateState(onUpdateStateChanged);
+if(window.api.getUpdateState) window.api.getUpdateState().then(onUpdateStateChanged).catch(() => {});
 
 /* ---- thème (contrôle segmenté) ---- */
 document.querySelectorAll('#s-theme .seg-btn').forEach((btn) => {
@@ -1206,6 +1410,7 @@ window.api.getSettings().then((s) => {
   timer.remaining = timer.minutes*60 + timer.seconds;
   renderPomo(); renderTimer(); renderStopwatch();
   populateSettingsUI();
+  resumeToolsAfterUpdate(); // après les réglages : sinon les durées par défaut écraseraient l'état restauré
 });
 
 

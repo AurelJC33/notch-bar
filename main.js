@@ -7,6 +7,7 @@ const { randomUUID } = require('crypto');
 const Store = require('electron-store');
 const { WindowsMediaService } = require('./media-service');
 const { createUpdater } = require('./updater');
+const { sanitizeSnapshot, isSnapshotFresh } = require('./resume-state');
 
 // Une seule instance : un second lancement créerait un deuxième notch, un
 // deuxième sondeur de presse-papiers et un deuxième process PowerShell.
@@ -1262,30 +1263,79 @@ ipcMain.handle('set-window-mode', (event, kind) => {
 
 
 /* ---------------- Mises à jour ---------------- */
+/* Parcours : le notch annonce la version (état 'available'), l'utilisateur clique, on télécharge
+   (download-update), puis le renderer fige l'état des minuteurs et appelle install-update(snapshot).
+   Le snapshot est écrit sur disque AVANT la fermeture ; au redémarrage le renderer le récupère
+   (take-resume-state : usage unique, 10 min maximum) et relance Pomodoro / Timer / Stopwatch. */
+const resumeStore = new Store({ name: 'resume-state', defaults: { snapshot: null } });
+
+// Dev : NOTCH_FAKE_UPDATE=1 simule tout le parcours (annonce, téléchargement, redémarrage)
+// sans publier de release. PowerShell :  $env:NOTCH_FAKE_UPDATE=1; npm start
+const fakeUpdate = !app.isPackaged && process.env.NOTCH_FAKE_UPDATE === '1';
+function createFakeAutoUpdater() {
+  const { EventEmitter } = require('events');
+  const fake = new EventEmitter();
+  fake.checkForUpdates = async () => {
+    fake.emit('checking-for-update');
+    setTimeout(() => fake.emit('update-available', { version: '9.9.9' }), 1200);
+  };
+  fake.downloadUpdate = async () => {
+    let percent = 0;
+    const timer = setInterval(() => {
+      percent += 20;
+      fake.emit('download-progress', { percent });
+      if (percent >= 100) {
+        clearInterval(timer);
+        fake.emit('update-downloaded', { version: '9.9.9' });
+      }
+    }, 500);
+  };
+  fake.quitAndInstall = () => { app.relaunch(); app.exit(0); };
+  return fake;
+}
+
 let updater = null;
 function setupUpdater() {
   let autoUpdater = null;
-  if (app.isPackaged) {
+  if (fakeUpdate) {
+    autoUpdater = createFakeAutoUpdater();
+  } else if (app.isPackaged) {
     try { ({ autoUpdater } = require('electron-updater')); }
     catch (error) { console.warn('[updater] electron-updater indisponible :', error.message); }
   }
   updater = createUpdater({
     autoUpdater,
-    isPackaged: app.isPackaged && !!autoUpdater,
+    isPackaged: (app.isPackaged || fakeUpdate) && !!autoUpdater,
     version: app.getVersion(),
     getAutoEnabled: () => store.get('autoUpdateEnabled') !== false,
     send: (state) => { if (notchWin && !notchWin.isDestroyed()) notchWin.webContents.send('update-state', state); },
     log: (...args) => console.warn(...args),
   });
   updater.start();
+  if (fakeUpdate) setTimeout(() => updater.check({ manual: true }), 4000);
 }
 
 ipcMain.handle('get-update-state', () => (updater ? updater.getState() : { status: 'disabled', version: app.getVersion(), percent: 0 }));
 ipcMain.handle('check-for-updates', () => (updater ? updater.check({ manual: true }) : { status: 'disabled', version: app.getVersion(), percent: 0 }));
-ipcMain.handle('install-update', () => {
-  if (!updater || !updater.install()) return false;
+ipcMain.handle('download-update', () => (updater ? updater.download() : false));
+ipcMain.handle('install-update', (event, snapshot) => {
+  if (!updater) return false;
+  // Le snapshot est écrit (synchrone) avant de quitter ; s'il est vide ou invalide on n'écrit rien.
+  const tools = sanitizeSnapshot(snapshot);
+  if (tools) resumeStore.set('snapshot', { savedAt: Date.now(), fromVersion: app.getVersion(), tools });
+  else resumeStore.delete('snapshot');
+  if (!updater.install()) {
+    resumeStore.delete('snapshot');
+    return false;
+  }
   appIsQuitting = true;
   return true;
+});
+ipcMain.handle('take-resume-state', () => {
+  const saved = resumeStore.get('snapshot');
+  resumeStore.delete('snapshot'); // usage unique : jamais de minuteur « fantôme » au lancement suivant
+  if (!saved || !isSnapshotFresh(saved)) return null;
+  return sanitizeSnapshot(saved.tools);
 });
 
 /* ---------------- Cycle de vie app ---------------- */

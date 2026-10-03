@@ -56,6 +56,8 @@ SOUNDS = {
     'timerDone':    overlay(['C5', 'E5', 'G5'], 0.07, 0.16, decay=5),
     'pomoFocusEnd': overlay(['E5', 'G5', 'C6'], 0.07, 0.16, decay=5),     # montant : pause méritée
     'pomoBreakEnd': overlay(['G5', 'E5'], 0.08, 0.20, decay=5),          # descendant : retour au focus
+    # mise à jour disponible : même timbre doux et montant que « connect » (remplace-le ici pour changer de son)
+    'updateAvailable': overlay(['E5', 'B5'], 0.09, 0.19, decay=6),
 }
 
 def to_pcm16(sig):

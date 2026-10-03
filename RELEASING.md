@@ -1,6 +1,6 @@
 # Publier une version (mises à jour automatiques)
 
-L'app embarque `electron-updater` : elle vérifie GitHub Releases 30 s après le démarrage, puis toutes les 6 h. La mise à jour se télécharge en arrière-plan et s'installe **à la fermeture** de l'app, ou via Paramètres > Updates > « Restart to update ». Rien ne redémarre tout seul.
+L'app embarque `electron-updater` : elle vérifie GitHub Releases 30 s après le démarrage, puis toutes les 6 h. Quand une version plus récente existe, le notch s'agrandit (lueur courte + son discret) et affiche « Version x.y.z available — Click here to download and restart ». **Rien ne se télécharge sans clic** ; la croix repousse la mise à jour à plus tard (elle reste proposée dans Paramètres > Updates, et l'annonce revient au prochain lancement). Un clic télécharge la version depuis GitHub, installe en silence et relance Notch. Si un Pomodoro, un Timer ou un Stopwatch tournait, il reprend là où il en était (le temps restant est figé pendant le redémarrage).
 
 ## Réglage unique (une fois)
 1. Dans `package.json`, section `build.publish`, remplace `VOTRE-PSEUDO-GITHUB` (et `notch-bar` si ton dépôt s'appelle autrement) par ton compte et ton dépôt.
@@ -22,3 +22,12 @@ Sans certificat, l'installeur fonctionne et les mises à jour aussi, mais Window
 ## Limites connues
 - Non testé de bout en bout ici : il faut une vraie release publiée pour voir une mise à jour arriver.
 - Pas de canal bêta (`allowPrerelease` est à `false`).
+
+## Tester le parcours sans publier de release
+`NOTCH_FAKE_UPDATE=1` simule une version 9.9.9 : annonce, téléchargement (5 s) et redémarrage réel de l'app, avec reprise des minuteurs.
+- PowerShell : `$env:NOTCH_FAKE_UPDATE=1; npm start`
+- Lance un Pomodoro (ou un Timer / Stopwatch), attends la bannière (≈ 5 s), clique dessus : l'app redémarre et le minuteur repart du temps restant.
+- Après le redémarrage de test la bannière revient (le faux updater annonce toujours 9.9.9) : c'est normal.
+
+## Important : la première mise à jour vers 1.1.0
+Les installations antérieures à 1.1.0 embarquent l'ancien updater (téléchargement automatique, installation à la fermeture ou via « Restart to update », sans bannière ni reprise des minuteurs). Le nouveau parcours s'applique donc **à partir des mises à jour qui suivent la 1.1.0**.

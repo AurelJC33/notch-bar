@@ -259,6 +259,19 @@
       </div>
     </div>
 
+    <!-- Mise à jour disponible : la capsule s'agrandit (lueur courte + son) ; la croix repousse à plus tard. -->
+    <div class="view" id="view-update" aria-live="polite">
+      <button class="update-card" id="update-card" type="button">
+        <span class="update-badge"><span class="icon" data-icon="import"></span></span>
+        <span class="update-copy">
+          <strong id="update-card-title">Update available</strong>
+          <span id="update-card-sub">Click here to download and restart</span>
+        </span>
+      </button>
+      <button class="icon-btn update-close" id="update-dismiss" type="button" title="Later" aria-label="Update later"><span class="icon" data-icon="close"></span></button>
+      <div class="update-progress" id="update-progress" hidden><span id="update-progress-bar"></span></div>
+    </div>
+
     <!-- État compact pendant qu'un minuteur tourne -->
     <div class="view" id="view-running">
       <span class="icon" id="run-icon" data-icon="focus"></span>

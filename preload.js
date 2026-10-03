@@ -16,7 +16,9 @@ contextBridge.exposeInMainWorld('api', {
   },
   getUpdateState: () => ipcRenderer.invoke('get-update-state'),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
-  installUpdate: () => ipcRenderer.invoke('install-update'),
+  downloadUpdate: () => ipcRenderer.invoke('download-update'),
+  installUpdate: (snapshot) => ipcRenderer.invoke('install-update', snapshot),
+  takeResumeState: () => ipcRenderer.invoke('take-resume-state'),
   onUpdateState: (callback) => {
     ipcRenderer.on('update-state', (event, state) => callback(state));
   },
