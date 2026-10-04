@@ -46,6 +46,8 @@ const store = new Store({
     autoHide: false,
     globalShortcutEnabled: true,
     globalShortcut: DEFAULT_GLOBAL_SHORTCUT,
+    weatherEnabled: true,
+    lastTab: 'pomodoro',
   },
 });
 
@@ -286,6 +288,20 @@ function removeClipboardHistoryItemFiles(item) {
   for (const filePath of paths) {
     try { if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch {}
   }
+}
+
+/**
+ * Vide tout l'historique : entrées, images et formats bruts sur le disque.
+ * clipboardLastFingerprint n'est volontairement pas remis à zéro : le contenu
+ * qui est encore dans le presse-papiers de Windows ne doit pas être ré-enregistré
+ * aussitôt après avoir été effacé.
+ */
+function clearClipboardHistory() {
+  for (const item of getClipboardHistoryRawItems()) removeClipboardHistoryItemFiles(item);
+  clipboardHistoryStore.set('items', []);
+  try { fs.rmSync(clipboardHistoryMediaDir(), { recursive: true, force: true }); } catch {}
+  if (notchWin && !notchWin.isDestroyed()) notchWin.webContents.send('clipboard-history-updated', []);
+  return [];
 }
 
 function addClipboardHistoryItem(snapshot) {
@@ -747,15 +763,8 @@ const GEO_PROVIDERS = [
     }
     return { lat: data.latitude, lon: data.longitude };
   },
-  async () => {
-    const res = await withTimeout(fetch('http://ip-api.com/json/'), 6000);
-    if (!res.ok) throw new Error('ip-api.com HTTP ' + res.status);
-    const data = await res.json();
-    if (data.status !== 'success' || typeof data.lat !== 'number' || typeof data.lon !== 'number') {
-      throw new Error('ip-api.com: coordonnées manquantes (' + JSON.stringify(data).slice(0, 120) + ')');
-    }
-    return { lat: data.lat, lon: data.lon };
-  },
+  // HTTPS uniquement : un service en HTTP clair laisserait l'adresse IP (et donc
+  // la position approximative) lisible par n'importe qui sur le réseau.
 ];
 
 async function resolveLocation() {
@@ -774,12 +783,14 @@ async function resolveLocation() {
 
 async function fetchWeather() {
   try {
+    if (weatherDisabled()) return null;
     const loc = await resolveLocation();
-    if (!loc) return null;
+    if (!loc || weatherDisabled()) return null;
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&current=temperature_2m,weather_code&timezone=auto`;
     const res = await withTimeout(fetch(url), 6000);
     if (!res.ok) throw new Error('open-meteo HTTP ' + res.status);
     const data = await res.json();
+    if (weatherDisabled()) return null;
     weatherCache = {
       temp: Math.round(data.current.temperature_2m),
       icon: mapWeatherCode(data.current.weather_code),
@@ -796,10 +807,29 @@ async function fetchWeather() {
   }
 }
 
+function weatherDisabled() {
+  return store.get('weatherEnabled') === false;
+}
+
 function startWeatherLoop() {
-  fetchWeather();
   clearInterval(weatherTimer);
+  weatherTimer = null;
+  if (weatherDisabled()) return; // interrupteur coupé : aucune requête réseau
+  fetchWeather();
   weatherTimer = setInterval(fetchWeather, WEATHER_REFRESH_MS);
+}
+
+/** Arrête les requêtes et oublie la position et la dernière mesure. */
+function stopWeatherLoop() {
+  clearInterval(weatherTimer);
+  weatherTimer = null;
+  geoCache = null;
+  weatherCache = { temp: null, icon: 'weather-clear', updatedAt: 0 };
+}
+
+function applyWeatherSetting() {
+  if (weatherDisabled()) stopWeatherLoop();
+  else if (!weatherTimer) startWeatherLoop();
 }
 
 function primaryBounds() {
@@ -1103,6 +1133,7 @@ ipcMain.handle('save-settings', (event, partial) => {
     app.setLoginItemSettings({ openAtLogin: !!partial.launchAtStartup });
   }
   if ('globalShortcutEnabled' in partial || 'globalShortcut' in partial) applyGlobalShortcut();
+  if ('weatherEnabled' in partial) applyWeatherSetting();
   if (notchWin) notchWin.webContents.send('settings-updated', store.store);
   return store.store;
 });
@@ -1110,6 +1141,7 @@ ipcMain.handle('save-settings', (event, partial) => {
 ipcMain.handle('reset-settings', () => {
   store.clear();
   applyGlobalShortcut();
+  applyWeatherSetting();
   clipboardHistoryEnabled = store.get('clipboardHistoryEnabled') !== false;
   if (notchWin) notchWin.webContents.send('settings-updated', store.store);
   return store.store;
@@ -1299,6 +1331,7 @@ ipcMain.handle('record-pomodoro-session', (event, value) => {
 });
 ipcMain.handle('get-clipboard-history', () => getClipboardHistoryData());
 ipcMain.handle('clipboard-history-copy', (event, id) => restoreClipboardHistoryItem(id));
+ipcMain.handle('clear-clipboard-history', () => clearClipboardHistory());
 ipcMain.on('clipboard-history-request-refresh', () => { pollClipboardHistory(); });
 
 ipcMain.handle('get-shelf-data', () => getShelfData());

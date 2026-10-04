@@ -189,8 +189,13 @@ app.whenReady().then(async () => {
   assert.equal(await win.webContents.executeJavaScript(`document.body.dataset.mediaState`), 'expanded');
 
   await win.webContents.executeJavaScript(`document.querySelector('[data-tab="schedule"]').click()`);
-  await waitFor(win, `document.body.classList.contains('mode-schedule')`);
+  // Calendrier réduit par défaut : Mois/Jour seuls, sans le panneau des tâches.
+  await waitFor(win, `document.body.classList.contains('mode-expanded')`);
+  assert.equal(await win.webContents.executeJavaScript(`getComputedStyle(document.querySelector('.tasks-pane')).display`), 'none');
   assert.equal(await win.webContents.executeJavaScript(`document.querySelectorAll('.month-day').length`), 42);
+  await win.webContents.executeJavaScript(`document.querySelector('#calendar-expand').click()`);
+  await waitFor(win, `document.body.classList.contains('mode-schedule')`);
+  assert.notEqual(await win.webContents.executeJavaScript(`getComputedStyle(document.querySelector('.tasks-pane')).display`), 'none');
 
   // Régression : si Emploi du temps est l'onglet courant, réduire puis rouvrir
   // la bulle doit revenir directement au calendrier, sans second clic.

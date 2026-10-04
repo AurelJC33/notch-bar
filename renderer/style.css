@@ -2715,3 +2715,53 @@ body.reduce-motion #capsule, body.reduce-motion #media-notch{ transition:none; }
 .calendar-empty{ flex:none; display:flex; align-items:center; justify-content:space-between; gap:10px; margin:0 0 8px; padding:6px 6px 6px 11px; background:var(--panel2); border:1px solid var(--border); border-radius:10px; font-size:11.5px; color:var(--sub); }
 .calendar-empty[hidden]{ display:none; }
 .calendar-empty .btn{ flex:none; padding:5px 10px; font-size:11px; }
+
+/* ==================== v1.6 — onglets compacts, calendrier réduit, météo masquable ====================
+   Bloc placé en dernier volontairement : le fichier empile des correctifs successifs,
+   celui-ci a donc le dernier mot. */
+:root{ --h-calendar-compact:440px; }
+
+/* Onglets : icône seule, libellé uniquement pour la page active (six pages tiennent sans défiler). */
+.tab{ padding:6px 9px; }
+.tab:not(.active) .tab-label{ display:none; }
+
+/* Focus clavier visible (le contour reste à l'intérieur : .tabs coupe ce qui déborde). */
+.tab:focus-visible{ outline:2px solid var(--accent); outline-offset:-2px; }
+.icon-btn:focus-visible,
+.btn:focus-visible,
+.seg-btn:focus-visible,
+.toolbar-btn:focus-visible,
+.swatch:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+.switch input:focus-visible + .switch-track{ outline:2px solid var(--accent); outline-offset:2px; }
+
+/* Calendrier réduit : Mois/Jour seuls, sans le panneau des tâches (mode 'expanded' + onglet Calendar). */
+body.mode-expanded:has(#panel-schedule.active) #capsule{ height:var(--h-calendar-compact); }
+body.mode-expanded:has(#panel-schedule.active) #view-expanded{ height:var(--h-calendar-compact); }
+body.mode-expanded .schedule-panel.active{ display:flex; }
+body.mode-expanded .schedule-panel.active .schedule-shell{
+  display:flex; flex-direction:column; opacity:1; transform:none;
+}
+body.mode-expanded .schedule-panel.active .tasks-pane,
+body.mode-expanded .schedule-panel.active .focus-fab{ display:none; }
+body.mode-expanded .schedule-panel.active .calendar-pane{
+  flex:1; width:100%; padding-right:0; border-right:0;
+}
+body.mode-expanded .calendar-toolbar{ min-height:40px; gap:8px; padding:0 0 4px; }
+body.mode-expanded .calendar-nav h1{ font-size:14px; margin-left:4px; }
+
+/* Boutons Agrandir / Réduire du calendrier. */
+.calendar-expand-btn{ width:26px; height:26px; flex:none; }
+.calendar-expand-btn .icon{ width:13px; height:13px; }
+#calendar-collapse{ display:none; }
+body.mode-schedule #calendar-expand{ display:none; }
+body.mode-schedule #calendar-collapse{ display:flex; }
+
+/* Pill : météo masquée quand elle est désactivée. */
+body[data-weather="off"] .pill-weather,
+body[data-weather="off"] .pill-sep{ display:none; }
+
+/* Vider l'historique du presse-papiers. */
+.clipboard-actions{ display:flex; align-items:center; gap:4px; }
+.icon-btn:disabled{ opacity:.35; cursor:default; pointer-events:none; }
+.icon-btn.danger-pending{ background:var(--red); color:#fff; }
+.settings-row .btn.danger-pending{ background:var(--red); color:#fff; border-color:transparent; }

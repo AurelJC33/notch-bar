@@ -18,12 +18,17 @@ let settings = {
   theme: 'sombre',
   accentColor: '#0a84ff',
   pinnedPages: ['pomodoro', 'schedule', 'timer', 'stopwatch'],
+  weatherEnabled: true,
+  lastTab: 'pomodoro',
 };
 window.__notchSettings = settings;
 
 let mode = null; // pill | hover | expanded | schedule | running | settings | shelf
 let activeTool = null; // 'pomodoro' | 'timer' | 'stopwatch' | null
 let currentTab = 'pomodoro';
+// Calendrier : réduit (Mois/Jour seuls, mode 'expanded') ou agrandi (avec les tâches,
+// mode 'schedule'). Garde en mémoire pour la session uniquement ; réduit au lancement.
+let calendarExpanded = false;
 const NOTCH_PAGES = [
   { id: 'pomodoro', label: 'Pomodoro', icon: 'focus' },
   { id: 'schedule', label: 'Calendar', icon: 'calendar' },
@@ -248,8 +253,8 @@ function requestWindowMode(kind){
 
 function openCurrentView(){
   if(currentTab === 'schedule'){
-    requestWindowMode('schedule');
-    setMode('schedule');
+    requestWindowMode(calendarExpanded ? 'schedule' : 'notch');
+    setMode(calendarExpanded ? 'schedule' : 'expanded');
     return;
   }
   requestWindowMode('notch');
@@ -497,15 +502,29 @@ capsuleEl.addEventListener('drop', (event) => {
 window.api.getShelfData?.().then(applyShelfData).catch(() => renderShelf());
 
 /* ==================== ONGLETS ==================== */
+/* Dernier onglet utilisé : enregistré dans les réglages (écriture différée, sans
+   repeindre l'interface : rien ne change visuellement). */
+function rememberTab(name){
+  settings.lastTab = name;
+  pendingPatch.lastTab = name;
+  queueSave();
+}
+
 function selectTab(name, updateMode = true){
   const tab = document.querySelector(`.tab[data-tab="${name}"]`);
   const panel = $('panel-' + name);
   if(!tab || !panel) return;
-  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
+  document.querySelectorAll('.tab').forEach(t => {
+    const active = t === tab;
+    t.classList.toggle('active', active);
+    t.setAttribute('aria-selected', active ? 'true' : 'false');
+    t.tabIndex = active ? 0 : -1;
+  });
   document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p === panel));
   currentTab = name;
   if(!updateMode) return;
-  if(name === 'schedule'){
+  rememberTab(name);
+  if(name === 'schedule' && calendarExpanded){
     // La vue et sa taille CSS basculent dans la même frame : aucun état
     // Pomodoro intermédiaire, même au premier clic.
     requestWindowMode('schedule');
@@ -517,6 +536,54 @@ function selectTab(name, updateMode = true){
 }
 
 document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => selectTab(tab.dataset.tab)));
+
+/* Accessibilité : chaque panneau est relié à son onglet. */
+for(const page of NOTCH_PAGES){
+  const panel = $('panel-' + page.id);
+  if(!panel) continue;
+  panel.setAttribute('role', 'tabpanel');
+  panel.setAttribute('aria-labelledby', 'tab-' + page.id);
+}
+
+/* Clavier sur la barre d'onglets : ← → Début Fin déplacent le focus (un seul onglet
+   est dans l'ordre de tabulation) ; Entrée ou Espace ouvre l'onglet. Pas d'ouverture
+   automatique au déplacement : elle redimensionnerait la capsule à chaque flèche. */
+const tabListEl = document.querySelector('.tabs');
+tabListEl.addEventListener('keydown', (e) => {
+  const tabs = [...tabListEl.querySelectorAll('.tab')];
+  const index = tabs.indexOf(e.target.closest('.tab'));
+  if(index < 0) return;
+  let next = -1;
+  if(e.key === 'ArrowRight') next = (index + 1) % tabs.length;
+  else if(e.key === 'ArrowLeft') next = (index - 1 + tabs.length) % tabs.length;
+  else if(e.key === 'Home') next = 0;
+  else if(e.key === 'End') next = tabs.length - 1;
+  else return;
+  e.preventDefault();
+  tabs[next].focus();
+});
+
+/* Ctrl+1 … Ctrl+6 : ouvre directement la page correspondante (même ordre que les onglets). */
+const TAB_SHORTCUT_MODES = new Set(['expanded', 'schedule', 'analytics', 'analytics-expanded']);
+document.addEventListener('keydown', (e) => {
+  if(!e.ctrlKey || e.altKey || e.shiftKey || e.metaKey || !/^[1-6]$/.test(e.key)) return;
+  if(!TAB_SHORTCUT_MODES.has(mode)) return;
+  if(e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+  const page = NOTCH_PAGES[Number(e.key) - 1];
+  if(!page) return;
+  e.preventDefault();
+  selectTab(page.id);
+});
+
+/* Calendrier : « Agrandir » ajoute le panneau des tâches, « Réduire » revient à Mois/Jour seuls. */
+function setCalendarExpanded(next){
+  calendarExpanded = !!next;
+  if(currentTab !== 'schedule') return;
+  requestWindowMode(calendarExpanded ? 'schedule' : 'notch');
+  setMode(calendarExpanded ? 'schedule' : 'expanded');
+}
+$('calendar-expand').addEventListener('click', (e) => { e.stopPropagation(); setCalendarExpanded(true); });
+$('calendar-collapse').addEventListener('click', (e) => { e.stopPropagation(); setCalendarExpanded(false); });
 
 function renderPinnedPages() {
   pinnedPages = normalizePinnedPages(pinnedPages);
@@ -648,6 +715,8 @@ if(window.api.onWeatherUpdated) window.api.onWeatherUpdated(renderWeather);
 
 /* ==================== APPARENCE (thème / accent) ==================== */
 function applyAppearance(){
+  // Interrupteur Settings > Privacy > Weather : masque l'heure/température de la pill.
+  body.dataset.weather = settings.weatherEnabled === false ? 'off' : 'on';
   document.documentElement.setAttribute(
     'data-theme',
     settings.theme === 'auto'
@@ -1112,6 +1181,7 @@ function populateSettingsUI(){
   volumeInput.style.setProperty('--progress', volumeInput.value + '%');
   volumeInput.closest('.settings-row').classList.toggle('is-disabled', !settings.soundEnabled);
   $('s-clipboardHistoryEnabled').checked = settings.clipboardHistoryEnabled !== false;
+  $('s-weatherEnabled').checked = settings.weatherEnabled !== false;
   $('s-eventRemindersEnabled').checked = !!settings.eventRemindersEnabled;
   pinnedPages = normalizePinnedPages(settings.pinnedPages);
   renderPinnedPages();
@@ -1332,7 +1402,7 @@ document.querySelectorAll('.stepper-inline').forEach((el) => {
 });
 
 /* ---- interrupteurs ---- */
-['autoStartNext', 'alwaysOnTop', 'launchAtStartup', 'reduceMotion', 'autoUpdateEnabled', 'collapseOnOutsideClick', 'autoHide', 'globalShortcutEnabled', 'soundEnabled', 'soundUi', 'soundNotifications', 'soundTimers', 'soundMuteWhenMedia', 'clipboardHistoryEnabled', 'eventRemindersEnabled'].forEach((key) => {
+['autoStartNext', 'alwaysOnTop', 'launchAtStartup', 'reduceMotion', 'autoUpdateEnabled', 'collapseOnOutsideClick', 'autoHide', 'globalShortcutEnabled', 'soundEnabled', 'soundUi', 'soundNotifications', 'soundTimers', 'soundMuteWhenMedia', 'clipboardHistoryEnabled', 'weatherEnabled', 'eventRemindersEnabled'].forEach((key) => {
   $('s-' + key).addEventListener('change', (e) => {
     updateSetting(key, e.target.checked);
     if(key.startsWith('sound')) $('s-soundVolume').closest('.settings-row').classList.toggle('is-disabled', !settings.soundEnabled);
@@ -1684,6 +1754,8 @@ window.api.getSettings().then((s) => {
   settings.pinnedPages = normalizePinnedPages(settings.pinnedPages);
   window.__notchSettings = settings;
   pinnedPages = [...settings.pinnedPages];
+  const savedTab = pageDefinition(settings.lastTab) ? settings.lastTab : 'pomodoro';
+  if(savedTab !== currentTab) selectTab(savedTab, false);
   renderPinnedPages();
   applyAppearance();
   body.classList.toggle('reduce-motion', !!settings.reduceMotion);
@@ -1913,6 +1985,8 @@ function renderClipboardHistory() {
   list.innerHTML = '';
   count.textContent = `${clipboardHistory.length} / 25`;
   empty.hidden = clipboardHistory.length !== 0;
+  const clearButton = $('clipboard-clear');
+  if(clearButton) clearButton.disabled = clipboardHistory.length === 0;
 
   for(const item of clipboardHistory.slice(0, 25)) {
     const button = document.createElement('button');
@@ -1969,6 +2043,49 @@ function applyClipboardHistory(history) {
   clipboardHistory = Array.isArray(history) ? history.slice(0, 25) : [];
   renderClipboardHistory();
 }
+
+/* Bouton à double clic : le premier arme (3 s), le second exécute. Pas de confirm()
+   natif, qui détonnerait dans une bulle transparente sans chrome. */
+function setupConfirmButton(button, run, { idleText = null, confirmText = null, idleTitle = '', confirmTitle = '' } = {}){
+  let pending = false;
+  let timer = null;
+  const setLabel = (text, title) => {
+    if(text !== null) button.textContent = text;
+    if(title){ button.title = title; button.setAttribute('aria-label', title); }
+  };
+  const reset = () => {
+    pending = false;
+    clearTimeout(timer);
+    button.classList.remove('danger-pending');
+    setLabel(idleText, idleTitle);
+  };
+  button.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    if(button.disabled) return;
+    if(!pending){
+      pending = true;
+      button.classList.add('danger-pending');
+      setLabel(confirmText, confirmTitle);
+      clearTimeout(timer);
+      timer = setTimeout(reset, 3000);
+      return;
+    }
+    reset();
+    await run();
+  });
+}
+async function clearClipboardHistoryNow(){
+  const result = await window.api.clearClipboardHistory?.();
+  applyClipboardHistory(Array.isArray(result) ? result : []);
+}
+setupConfirmButton($('clipboard-clear'), clearClipboardHistoryNow, {
+  idleTitle: 'Clear clipboard history',
+  confirmTitle: 'Click again to clear',
+});
+setupConfirmButton($('btn-clear-clipboard'), clearClipboardHistoryNow, {
+  idleText: 'Clear',
+  confirmText: 'Confirm',
+});
 
 $('clipboard-refresh').addEventListener('click', () => {
   window.api.requestClipboardHistoryRefresh?.();

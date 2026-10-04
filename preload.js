@@ -60,6 +60,7 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('pomodoro-analytics-updated', (event, session) => callback(session));
   },
   getClipboardHistory: () => ipcRenderer.invoke('get-clipboard-history'),
+  clearClipboardHistory: () => ipcRenderer.invoke('clear-clipboard-history'),
   copyClipboardHistoryItem: (id) => ipcRenderer.invoke('clipboard-history-copy', id),
   requestClipboardHistoryRefresh: () => ipcRenderer.send('clipboard-history-request-refresh'),
   onClipboardHistoryUpdated: (callback) => {

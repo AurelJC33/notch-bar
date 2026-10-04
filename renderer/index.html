@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src https://ipapi.co https://ipwho.is http://ip-api.com https://api.open-meteo.com">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src https://ipapi.co https://ipwho.is https://api.open-meteo.com">
 <title>Notch Bar</title>
 <link rel="stylesheet" href="style.css">
 </head>
@@ -52,13 +52,13 @@
     <!-- État agrandi : onglets + contenu -->
     <div class="view" id="view-expanded">
       <div class="topbar">
-        <div class="tabs">
-          <button class="tab active" data-tab="pomodoro"><span class="icon" data-icon="focus"></span>Pomodoro</button>
-          <button class="tab" data-tab="schedule"><span class="icon" data-icon="calendar"></span>Calendar</button>
-          <button class="tab" data-tab="timer"><span class="icon" data-icon="timer"></span>Timer</button>
-          <button class="tab" data-tab="stopwatch"><span class="icon" data-icon="stopwatch"></span>Stopwatch</button>
-          <button class="tab" data-tab="clipboard"><span class="icon" data-icon="clipboard"></span>Clipboard</button>
-          <button class="tab" data-tab="analytics"><span class="icon" data-icon="analytics"></span>Analytics</button>
+        <div class="tabs" role="tablist" aria-label="Pages">
+          <button class="tab active" id="tab-pomodoro" role="tab" aria-selected="true" aria-controls="panel-pomodoro" aria-label="Pomodoro" title="Pomodoro (Ctrl+1)" tabindex="0" data-tab="pomodoro"><span class="icon" data-icon="focus"></span><span class="tab-label">Pomodoro</span></button>
+          <button class="tab" id="tab-schedule" role="tab" aria-selected="false" aria-controls="panel-schedule" aria-label="Calendar" title="Calendar (Ctrl+2)" tabindex="-1" data-tab="schedule"><span class="icon" data-icon="calendar"></span><span class="tab-label">Calendar</span></button>
+          <button class="tab" id="tab-timer" role="tab" aria-selected="false" aria-controls="panel-timer" aria-label="Timer" title="Timer (Ctrl+3)" tabindex="-1" data-tab="timer"><span class="icon" data-icon="timer"></span><span class="tab-label">Timer</span></button>
+          <button class="tab" id="tab-stopwatch" role="tab" aria-selected="false" aria-controls="panel-stopwatch" aria-label="Stopwatch" title="Stopwatch (Ctrl+4)" tabindex="-1" data-tab="stopwatch"><span class="icon" data-icon="stopwatch"></span><span class="tab-label">Stopwatch</span></button>
+          <button class="tab" id="tab-clipboard" role="tab" aria-selected="false" aria-controls="panel-clipboard" aria-label="Clipboard" title="Clipboard (Ctrl+5)" tabindex="-1" data-tab="clipboard"><span class="icon" data-icon="clipboard"></span><span class="tab-label">Clipboard</span></button>
+          <button class="tab" id="tab-analytics" role="tab" aria-selected="false" aria-controls="panel-analytics" aria-label="Analytics" title="Analytics (Ctrl+6)" tabindex="-1" data-tab="analytics"><span class="icon" data-icon="analytics"></span><span class="tab-label">Analytics</span></button>
         </div>
         <div class="topbar-actions">
           <button class="icon-btn" id="btn-settings" title="Settings"><span class="icon" data-icon="settings"></span></button>
@@ -93,6 +93,8 @@
                   <button class="seg-btn active" data-view="month">Month</button>
                   <button class="seg-btn" data-view="day">Day</button>
                 </div>
+                <button class="icon-btn calendar-expand-btn" id="calendar-expand" type="button" title="Expand calendar (show tasks)" aria-label="Expand calendar"><span class="icon" data-icon="expand"></span></button>
+                <button class="icon-btn calendar-expand-btn" id="calendar-collapse" type="button" title="Collapse calendar (hide tasks)" aria-label="Collapse calendar"><span class="icon" data-icon="shrink"></span></button>
               </div>
             </header>
             <div class="calendar-empty" id="calendar-empty">
@@ -190,7 +192,10 @@
             <span class="phase-label">Clipboard</span>
             <span class="clipboard-count" id="clipboard-count">0 / 25</span>
           </div>
-          <button class="icon-btn" id="clipboard-refresh" type="button" title="Refresh clipboard history" aria-label="Refresh clipboard history"><span class="icon" data-icon="refresh"></span></button>
+          <div class="clipboard-actions">
+            <button class="icon-btn" id="clipboard-refresh" type="button" title="Refresh clipboard history" aria-label="Refresh clipboard history"><span class="icon" data-icon="refresh"></span></button>
+            <button class="icon-btn" id="clipboard-clear" type="button" title="Clear clipboard history" aria-label="Clear clipboard history" disabled><span class="icon" data-icon="trash"></span></button>
+          </div>
         </div>
         <div class="clipboard-list" id="clipboard-list"></div>
         <div class="clipboard-empty" id="clipboard-empty">Nothing copied yet.</div>
@@ -522,6 +527,20 @@
           <div class="settings-row">
             <span class="row-label">Clipboard history</span>
             <label class="switch"><input type="checkbox" id="s-clipboardHistoryEnabled"><span class="switch-track"></span></label>
+          </div>
+          <div class="settings-row">
+            <div class="update-info">
+              <span class="row-label">Clear clipboard history</span>
+              <p class="settings-help">Deletes every saved copy (text, images) from this computer.</p>
+            </div>
+            <button class="btn ghost" id="btn-clear-clipboard" type="button">Clear</button>
+          </div>
+          <div class="settings-row">
+            <div class="update-info">
+              <span class="row-label">Weather</span>
+              <p class="settings-help">Finds your approximate location from your IP address (ipapi.co, ipwho.is), then asks open-meteo.com for the temperature. Turn off to stop all requests.</p>
+            </div>
+            <label class="switch"><input type="checkbox" id="s-weatherEnabled"><span class="switch-track"></span></label>
           </div>
         </div>
 
