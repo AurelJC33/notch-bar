@@ -111,7 +111,7 @@ test('tabs: the current page is remembered and restored at startup', () => {
   assert.match(app, /function rememberTab\(name\)\{[\s\S]*?pendingPatch\.lastTab = name;[\s\S]*?queueSave\(\);/);
   const select = app.match(/function selectTab\(name, updateMode = true\)\{[\s\S]*?\n\}/)[0];
   assert.ok(select.indexOf('if(!updateMode) return;') < select.indexOf('rememberTab(name)'), 'restoring does not rewrite the setting');
-  assert.match(app, /const savedTab = pageDefinition\(settings\.lastTab\) \? settings\.lastTab : 'pomodoro';\n  if\(savedTab !== currentTab\) selectTab\(savedTab, false\);/);
+  assert.match(app, /const savedTab = pageDefinition\(settings\.lastTab\) \? resolvePageId\(settings\.lastTab\) : 'pomodoro';\n  if\(savedTab !== currentTab\) selectTab\(savedTab, false\);/);
 });
 
 test('calendar: compact by default (month/day only), Expand shows the tasks, Collapse goes back', () => {

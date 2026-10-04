@@ -19,6 +19,7 @@ ipcMain.handle('complete-onboarding', () => true);
 ipcMain.handle('set-global-shortcut', (_, accelerator) => ({ ok:true, accelerator }));
 ipcMain.handle('get-global-shortcut-status', () => ({ enabled:true, accelerator:'Ctrl+Alt+N', registered:true }));
 ipcMain.handle('get-weather', () => ({ temp:18, icon:'weather-clear' }));
+ipcMain.handle('get-weather-forecast', () => null);
 ipcMain.handle('get-planner-data', () => ({ calendarSources, calendarEvents:calendarSources.flatMap((source) => source.events), calendarMeta:calendarSources[0]?.meta || {}, plannerTasks:tasks }));
 ipcMain.handle('save-planner-tasks', (_, value) => (tasks = value));
 ipcMain.handle('save-calendar-sources', (_, value) => { calendarSources = value; return { calendarSources }; });

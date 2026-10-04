@@ -21,7 +21,7 @@ const planner = fs.readFileSync(new URL('../renderer/planner.js', import.meta.ur
 });
 
 test('pinned pages are limited to four and configurable independently', () => {
-  assert.match(app, /DEFAULT_PINNED_PAGES = \['pomodoro', 'schedule', 'timer', 'stopwatch'\]/);
+  assert.match(app, /DEFAULT_PINNED_PAGES = \['pomodoro', 'schedule', 'time', 'weather'\]/);
   assert.match(app, /\.slice\(0, 4\)/);
   assert.match(app, /updateSetting\('pinnedPages'/);
   assert.match(html, /id="pinned-pages-list"/);

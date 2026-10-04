@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('tray-command', (event, command) => callback(command));
   },
   getWeather: () => ipcRenderer.invoke('get-weather'),
+  getWeatherForecast: () => ipcRenderer.invoke('get-weather-forecast'),
   fetchICalUrl: (url) => ipcRenderer.invoke('fetch-ical-url', url),
   getMediaState: () => ipcRenderer.invoke('get-media-state'),
   getAudioAccessoryState: () => ipcRenderer.invoke('get-audio-accessory-state'),
@@ -68,5 +69,8 @@ contextBridge.exposeInMainWorld('api', {
   },
   onWeatherUpdated: (callback) => {
     ipcRenderer.on('weather-updated', (event, weather) => callback(weather));
+  },
+  onWeatherForecastUpdated: (callback) => {
+    ipcRenderer.on('weather-forecast-updated', (event, forecast) => callback(forecast));
   },
 });

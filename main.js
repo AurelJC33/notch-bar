@@ -9,6 +9,7 @@ const { WindowsMediaService } = require('./media-service');
 const { createUpdater } = require('./updater');
 const { sanitizeSnapshot, isSnapshotFresh } = require('./resume-state');
 const { DEFAULT_GLOBAL_SHORTCUT, isValidAccelerator } = require('./shortcut');
+const WeatherEngine = require('./renderer/weather-engine'); // conditions + prévisions (partagé avec le renderer)
 
 // Une seule instance : un second lancement créerait un deuxième notch, un
 // deuxième sondeur de presse-papiers et un deuxième process PowerShell.
@@ -42,12 +43,13 @@ const store = new Store({
     launchAtStartup: false,
     eventRemindersEnabled: false,
     eventReminderMinutes: 10,
-    pinnedPages: ['pomodoro', 'schedule', 'timer', 'stopwatch'],
+    pinnedPages: ['pomodoro', 'schedule', 'time', 'weather'],
     autoHide: false,
     globalShortcutEnabled: true,
     globalShortcut: DEFAULT_GLOBAL_SHORTCUT,
     weatherEnabled: true,
     lastTab: 'pomodoro',
+    lastTimeMode: 'stopwatch',
   },
 });
 
@@ -574,8 +576,9 @@ let notchWin = null;
 let windowMode = 'notch';
 
 /* ---------------- Météo (géolocalisation IP + Open-Meteo, sans clé) ---------------- */
-let geoCache = null; // { lat, lon }
+let geoCache = null; // { lat, lon, city }
 let weatherCache = { temp: null, icon: 'weather-clear', updatedAt: 0 };
+let forecastCache = null; // { source, city, days } : page Weather (voir renderer/weather-engine.js)
 let weatherTimer = null;
 const WEATHER_REFRESH_MS = 20 * 60 * 1000; // 20 min
 
@@ -752,7 +755,7 @@ const GEO_PROVIDERS = [
     if (typeof data.latitude !== 'number' || typeof data.longitude !== 'number') {
       throw new Error('ipapi.co: coordonnées manquantes (' + JSON.stringify(data).slice(0, 120) + ')');
     }
-    return { lat: data.latitude, lon: data.longitude };
+    return { lat: data.latitude, lon: data.longitude, city: String(data.city || '').slice(0, 60) };
   },
   async () => {
     const res = await withTimeout(fetch('https://ipwho.is/'), 6000);
@@ -761,7 +764,7 @@ const GEO_PROVIDERS = [
     if (data.success === false || typeof data.latitude !== 'number' || typeof data.longitude !== 'number') {
       throw new Error('ipwho.is: coordonnées manquantes (' + JSON.stringify(data).slice(0, 120) + ')');
     }
-    return { lat: data.latitude, lon: data.longitude };
+    return { lat: data.latitude, lon: data.longitude, city: String(data.city || '').slice(0, 60) };
   },
   // HTTPS uniquement : un service en HTTP clair laisserait l'adresse IP (et donc
   // la position approximative) lisible par n'importe qui sur le réseau.
@@ -786,7 +789,8 @@ async function fetchWeather() {
     if (weatherDisabled()) return null;
     const loc = await resolveLocation();
     if (!loc || weatherDisabled()) return null;
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&current=temperature_2m,weather_code&timezone=auto`;
+    // Une seule requête : mesure actuelle (pill) + prévisions horaires (page Weather).
+    const url = `https://api.open-meteo.com/v1/forecast?${WeatherEngine.openMeteoQuery(loc.lat, loc.lon)}`;
     const res = await withTimeout(fetch(url), 6000);
     if (!res.ok) throw new Error('open-meteo HTTP ' + res.status);
     const data = await res.json();
@@ -797,8 +801,10 @@ async function fetchWeather() {
       updatedAt: Date.now(),
     };
     console.log('[météo] mise à jour:', weatherCache.temp + '°', weatherCache.icon);
+    forecastCache = WeatherEngine.buildForecast(data, loc.city) || forecastCache;
     if (notchWin && !notchWin.isDestroyed()) {
       notchWin.webContents.send('weather-updated', weatherCache);
+      notchWin.webContents.send('weather-forecast-updated', forecastCache);
     }
     return weatherCache;
   } catch (e) {
@@ -825,6 +831,8 @@ function stopWeatherLoop() {
   weatherTimer = null;
   geoCache = null;
   weatherCache = { temp: null, icon: 'weather-clear', updatedAt: 0 };
+  forecastCache = null;
+  if (notchWin && !notchWin.isDestroyed()) notchWin.webContents.send('weather-forecast-updated', null);
 }
 
 function applyWeatherSetting() {
@@ -1072,6 +1080,7 @@ ipcMain.on('set-ignore-mouse-events', (event, ignore, options) => {
 
 ipcMain.handle('get-settings', () => store.store);
 ipcMain.handle('get-weather', () => weatherCache);
+ipcMain.handle('get-weather-forecast', () => forecastCache);
 
 const MAX_ICAL_RESPONSE_BYTES = 8 * 1024 * 1024;
 ipcMain.handle('fetch-ical-url', async (event, rawUrl) => {

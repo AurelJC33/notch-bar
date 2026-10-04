@@ -8,6 +8,16 @@
 </head>
 <body>
 
+  <!-- Dégradés des icônes météo (hors des panneaux : une référence vers un <defs> en display:none ne s'affiche pas). -->
+  <svg class="wx-defs" width="0" height="0" aria-hidden="true"><defs>
+    <linearGradient id="wx-cg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#c6daf2"/></linearGradient>
+    <linearGradient id="wx-cgd" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#eef3fa"/><stop offset="1" stop-color="#9db1cc"/></linearGradient>
+    <linearGradient id="wx-cgs" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c9d1de"/><stop offset="1" stop-color="#7686a2"/></linearGradient>
+    <linearGradient id="wx-sg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff2a8"/><stop offset="1" stop-color="#ffb02e"/></linearGradient>
+    <linearGradient id="wx-mg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fffbe8"/><stop offset="1" stop-color="#d5ddff"/></linearGradient>
+    <linearGradient id="wx-bg2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff8b8"/><stop offset="1" stop-color="#ffc42e"/></linearGradient>
+  </defs></svg>
+
   <div id="capsule">
     <!-- Liseré lumineux (conic-gradient) : un calque flou (glow) + un anneau net,
          posés derrière la surface. Tout se pilote en CSS, voir #edge dans style.css. -->
@@ -51,12 +61,18 @@
 
     <!-- État agrandi : onglets + contenu -->
     <div class="view" id="view-expanded">
+      <!-- Ciel de la page Weather : derrière la barre d'onglets et le panneau (z-index:-1), visible uniquement sur cette page. -->
+      <div class="weather-sky" id="weather-sky" aria-hidden="true">
+        <i class="wx-orb wx-o1"></i><i class="wx-orb wx-o2"></i><i class="wx-orb wx-o3"></i>
+        <div class="wx-sun"></div><div class="wx-sheen"></div>
+        <canvas id="wx-fx"></canvas><div class="wx-flash" id="wx-flash"></div>
+      </div>
       <div class="topbar">
         <div class="tabs" role="tablist" aria-label="Pages">
           <button class="tab active" id="tab-pomodoro" role="tab" aria-selected="true" aria-controls="panel-pomodoro" aria-label="Pomodoro" title="Pomodoro (Ctrl+1)" tabindex="0" data-tab="pomodoro"><span class="icon" data-icon="focus"></span><span class="tab-label">Pomodoro</span></button>
           <button class="tab" id="tab-schedule" role="tab" aria-selected="false" aria-controls="panel-schedule" aria-label="Calendar" title="Calendar (Ctrl+2)" tabindex="-1" data-tab="schedule"><span class="icon" data-icon="calendar"></span><span class="tab-label">Calendar</span></button>
-          <button class="tab" id="tab-timer" role="tab" aria-selected="false" aria-controls="panel-timer" aria-label="Timer" title="Timer (Ctrl+3)" tabindex="-1" data-tab="timer"><span class="icon" data-icon="timer"></span><span class="tab-label">Timer</span></button>
-          <button class="tab" id="tab-stopwatch" role="tab" aria-selected="false" aria-controls="panel-stopwatch" aria-label="Stopwatch" title="Stopwatch (Ctrl+4)" tabindex="-1" data-tab="stopwatch"><span class="icon" data-icon="stopwatch"></span><span class="tab-label">Stopwatch</span></button>
+          <button class="tab" id="tab-time" role="tab" aria-selected="false" aria-controls="panel-time" aria-label="Time" title="Time: stopwatch and timer (Ctrl+3)" tabindex="-1" data-tab="time"><span class="icon" data-icon="timer"></span><span class="tab-label">Time</span></button>
+          <button class="tab" id="tab-weather" role="tab" aria-selected="false" aria-controls="panel-weather" aria-label="Weather" title="Weather (Ctrl+4)" tabindex="-1" data-tab="weather"><span class="icon" data-icon="weather-partly"></span><span class="tab-label">Weather</span></button>
           <button class="tab" id="tab-clipboard" role="tab" aria-selected="false" aria-controls="panel-clipboard" aria-label="Clipboard" title="Clipboard (Ctrl+5)" tabindex="-1" data-tab="clipboard"><span class="icon" data-icon="clipboard"></span><span class="tab-label">Clipboard</span></button>
           <button class="tab" id="tab-analytics" role="tab" aria-selected="false" aria-controls="panel-analytics" aria-label="Analytics" title="Analytics (Ctrl+6)" tabindex="-1" data-tab="analytics"><span class="icon" data-icon="analytics"></span><span class="tab-label">Analytics</span></button>
         </div>
@@ -147,41 +163,73 @@
         </div>
         <button class="focus-fab" id="schedule-focus" title="Start focus session"><span class="icon" data-icon="play"></span></button>
       </section>
-      <!-- Timer -->
-      <section class="panel" id="panel-timer">
-        <div class="big-time" id="timer-time" role="button" tabindex="0" title="Click to type a duration (e.g. 45, 5:30, 90s)">05:00</div>
-        <input class="big-time-input" id="timer-time-input" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="8" aria-label="Timer duration" hidden>
-        <div class="presets" id="timer-presets" role="group" aria-label="Timer presets">
-          <button type="button" class="preset-chip" data-minutes="5">5 min</button>
-          <button type="button" class="preset-chip" data-minutes="10">10 min</button>
-          <button type="button" class="preset-chip" data-minutes="15">15 min</button>
-          <button type="button" class="preset-chip" data-minutes="25">25 min</button>
-          <button type="button" class="preset-chip" data-minutes="45">45 min</button>
+      <!-- Time : chronomètre et minuteur dans la même page (bascule dans la bulle, sans changer de taille). -->
+      <section class="panel time-panel" id="panel-time" aria-label="Time">
+        <div class="segmented compact time-toggle" id="time-toggle" role="group" aria-label="Stopwatch or timer">
+          <button type="button" class="seg-btn active" data-time-mode="stopwatch" aria-pressed="true">Stopwatch</button>
+          <button type="button" class="seg-btn" data-time-mode="timer" aria-pressed="false">Timer</button>
         </div>
-        <div class="steppers" id="timer-steppers">
-          <div class="stepper">
-            <button data-target="timer-min" data-delta="1">▲</button>
-            <div class="lbl">MIN</div>
-            <button data-target="timer-min" data-delta="-1">▼</button>
+        <div class="time-stage">
+          <div class="time-view active" id="time-view-stopwatch" data-time-view="stopwatch">
+            <div class="big-time" id="sw-time">00:00.0</div>
+            <div class="controls">
+              <button class="btn ghost" id="sw-reset">Reset</button>
+              <button class="btn primary" id="sw-toggle">Start</button>
+            </div>
           </div>
-          <div class="stepper">
-            <button data-target="timer-sec" data-delta="15">▲</button>
-            <div class="lbl">SEC</div>
-            <button data-target="timer-sec" data-delta="-15">▼</button>
+          <div class="time-view" id="time-view-timer" data-time-view="timer" aria-hidden="true">
+            <div class="big-time" id="timer-time" role="button" tabindex="0" title="Click to type a duration (e.g. 45, 5:30, 90s)">05:00</div>
+            <input class="big-time-input" id="timer-time-input" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="8" aria-label="Timer duration" hidden>
+            <div class="presets" id="timer-presets" role="group" aria-label="Timer presets">
+              <button type="button" class="preset-chip" data-minutes="5">5 min</button>
+              <button type="button" class="preset-chip" data-minutes="10">10 min</button>
+              <button type="button" class="preset-chip" data-minutes="15">15 min</button>
+              <button type="button" class="preset-chip" data-minutes="25">25 min</button>
+              <button type="button" class="preset-chip" data-minutes="45">45 min</button>
+            </div>
+            <div class="steppers" id="timer-steppers">
+              <div class="stepper">
+                <button data-target="timer-min" data-delta="1">▲</button>
+                <div class="lbl">MIN</div>
+                <button data-target="timer-min" data-delta="-1">▼</button>
+              </div>
+              <div class="stepper">
+                <button data-target="timer-sec" data-delta="15">▲</button>
+                <div class="lbl">SEC</div>
+                <button data-target="timer-sec" data-delta="-15">▼</button>
+              </div>
+            </div>
+            <div class="controls">
+              <button class="btn ghost" id="timer-reset">Reset</button>
+              <button class="btn primary" id="timer-toggle">Start</button>
+            </div>
           </div>
-        </div>
-        <div class="controls">
-          <button class="btn ghost" id="timer-reset">Reset</button>
-          <button class="btn primary" id="timer-toggle">Start</button>
         </div>
       </section>
 
-      <!-- Stopwatch -->
-      <section class="panel" id="panel-stopwatch">
-        <div class="big-time" id="sw-time">00:00.0</div>
-        <div class="controls">
-          <button class="btn ghost" id="sw-reset">Reset</button>
-          <button class="btn primary" id="sw-toggle">Start</button>
+      <!-- Weather : prototype « bulle météo » adapté au notch (voir weather.js). -->
+      <section class="panel weather-panel" id="panel-weather" aria-label="Weather">
+        <div class="wx-left wx-swap" id="wx-left">
+          <div class="wx-bigicon" id="wx-bigicon"></div>
+          <div class="wx-temp" id="wx-temp">--°</div>
+          <div class="wx-cond" id="wx-cond">—</div>
+        </div>
+        <div class="wx-right">
+          <header class="wx-head">
+            <h2 class="wx-city" id="wx-city">—</h2>
+            <button class="wx-today wx-off" id="wx-today" type="button" tabindex="-1">Today</button>
+          </header>
+          <nav class="wx-days" aria-label="Day">
+            <button class="wx-arrow" id="wx-prev" type="button" aria-label="Previous day"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3 5 8l5 5"/></svg></button>
+            <div class="wx-daylabel wx-swap" id="wx-daylabel"></div>
+            <button class="wx-arrow" id="wx-next" type="button" aria-label="Next day"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 3 5 5-5 5"/></svg></button>
+          </nav>
+          <div class="wx-sub">
+            <svg viewBox="0 0 20 20" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="10" r="8"/><path d="M10 5.5V10l3 2"/></svg>
+            <span>Hourly forecast</span>
+            <em class="wx-source" id="wx-source" hidden title="No live forecast available (offline, or Weather is off in Settings &gt; Privacy)">Demo</em>
+          </div>
+          <div class="wx-hours" id="wx-hours"><div class="wx-track wx-swap" id="wx-track"></div></div>
         </div>
       </section>
 
@@ -538,7 +586,7 @@
           <div class="settings-row">
             <div class="update-info">
               <span class="row-label">Weather</span>
-              <p class="settings-help">Finds your approximate location from your IP address (ipapi.co, ipwho.is), then asks open-meteo.com for the temperature. Turn off to stop all requests.</p>
+              <p class="settings-help">Finds your approximate location from your IP address (ipapi.co, ipwho.is), then asks open-meteo.com for the temperature and the forecast. Turn off to stop all requests.</p>
             </div>
             <label class="switch"><input type="checkbox" id="s-weatherEnabled"><span class="switch-track"></span></label>
           </div>
@@ -632,6 +680,8 @@
 <script src="sound-assets.js"></script>
 <script src="sound-engine.js"></script>
 <script src="duration-input.js"></script>
+<script src="weather-engine.js"></script>
+<script src="weather.js"></script>
 <script src="app.js"></script>
 <script type="module" src="calendar-engine.js"></script>
 <script type="module" src="planner.js"></script>

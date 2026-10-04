@@ -17,9 +17,10 @@ let settings = {
   reduceMotion: false,
   theme: 'sombre',
   accentColor: '#0a84ff',
-  pinnedPages: ['pomodoro', 'schedule', 'timer', 'stopwatch'],
+  pinnedPages: ['pomodoro', 'schedule', 'time', 'weather'],
   weatherEnabled: true,
   lastTab: 'pomodoro',
+  lastTimeMode: 'stopwatch',
 };
 window.__notchSettings = settings;
 
@@ -32,12 +33,15 @@ let calendarExpanded = false;
 const NOTCH_PAGES = [
   { id: 'pomodoro', label: 'Pomodoro', icon: 'focus' },
   { id: 'schedule', label: 'Calendar', icon: 'calendar' },
-  { id: 'timer', label: 'Timer', icon: 'timer' },
-  { id: 'stopwatch', label: 'Stopwatch', icon: 'stopwatch' },
+  { id: 'time', label: 'Time', icon: 'timer' },
+  { id: 'weather', label: 'Weather', icon: 'weather-partly' },
   { id: 'clipboard', label: 'Clipboard', icon: 'clipboard' },
   { id: 'analytics', label: 'Analytics', icon: 'analytics' },
 ];
-const DEFAULT_PINNED_PAGES = ['pomodoro', 'schedule', 'timer', 'stopwatch'];
+// Anciennes pages Timer et Stopwatch, fusionnées dans « Time » : les réglages déjà enregistrés
+// (pages épinglées, dernier onglet) restent valides.
+const LEGACY_PAGE_IDS = { timer: 'time', stopwatch: 'time' };
+const DEFAULT_PINNED_PAGES = ['pomodoro', 'schedule', 'time', 'weather'];
 let pinnedPages = [...DEFAULT_PINNED_PAGES];
 let clipboardHistory = [];
 let clipboardScrollTimer = null;
@@ -46,12 +50,20 @@ let analyticsYear = new Date().getFullYear();
 let analyticsMonthNumber = new Date().getMonth() + 1;
 let analyticsTooltipTimer = null;
 
+function resolvePageId(id) {
+  return LEGACY_PAGE_IDS[id] || id;
+}
 function normalizePinnedPages(value) {
   const source = Array.isArray(value) ? value : DEFAULT_PINNED_PAGES;
-  return [...new Set(source.filter((id) => NOTCH_PAGES.some((page) => page.id === id)))].slice(0, 4);
+  const resolved = source.map(resolvePageId);
+  const pages = [...new Set(resolved.filter((id) => NOTCH_PAGES.some((page) => page.id === id)))];
+  // Timer + Stopwatch épinglés fusionnent en une seule page : la place libérée revient à Weather.
+  if (resolved.length > pages.length && pages.length < 4 && !pages.includes('weather') && resolved.some((id, i) => source[i] !== id)) pages.push('weather');
+  return pages.slice(0, 4);
 }
 function pageDefinition(id) {
-  return NOTCH_PAGES.find((page) => page.id === id) || null;
+  const pageId = resolvePageId(id);
+  return NOTCH_PAGES.find((page) => page.id === pageId) || null;
 }
 
 const $ = (id) => document.getElementById(id);
@@ -167,6 +179,7 @@ function setMode(next){
   if(leaving === 'update') onLeaveUpdateMode();
   else if(updateBannerPending && (next === 'pill' || next === 'running')) setTimeout(showPendingUpdateBanner, 1200);
   autoHideEvaluate();
+  window.NotchWeather?.sync(); // la page Weather n'anime que lorsqu'elle est visible
 }
 
 const capsuleEl = $('capsule');
@@ -252,6 +265,7 @@ function requestWindowMode(kind){
 }
 
 function openCurrentView(){
+  if(currentTab === 'time') timeAutoSync();
   if(currentTab === 'schedule'){
     requestWindowMode(calendarExpanded ? 'schedule' : 'notch');
     setMode(calendarExpanded ? 'schedule' : 'expanded');
@@ -522,6 +536,8 @@ function selectTab(name, updateMode = true){
   });
   document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p === panel));
   currentTab = name;
+  if(name === 'time') timeAutoSync();
+  window.NotchWeather?.sync();
   if(!updateMode) return;
   rememberTab(name);
   if(name === 'schedule' && calendarExpanded){
@@ -1100,6 +1116,37 @@ function swReset(){
 }
 $('sw-toggle').addEventListener('click', () => { playSound('tick'); sw.running ? swPause() : swStart(); });
 $('sw-reset').addEventListener('click', swReset);
+
+/* ==================== PAGE TIME : CHRONOMÈTRE / MINUTEUR ====================
+   Une seule page, deux sous-vues superposées dans la même bulle (grille à une cellule :
+   la taille ne change jamais). Le bouton bascule uniquement l'affichage : aucun état
+   du chronomètre ni du minuteur n'est touché, ils continuent en arrière-plan. */
+let timeMode = 'stopwatch'; // 'stopwatch' | 'timer'
+function setTimeMode(next, remember = true){
+  if(next !== 'stopwatch' && next !== 'timer') return;
+  timeMode = next;
+  document.querySelectorAll('#time-toggle .seg-btn').forEach((btn) => {
+    const on = btn.dataset.timeMode === next;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  document.querySelectorAll('#panel-time .time-view').forEach((view) => {
+    const on = view.dataset.timeView === next;
+    view.classList.toggle('active', on);
+    view.setAttribute('aria-hidden', on ? 'false' : 'true');
+  });
+  if(!remember) return;
+  settings.lastTimeMode = next;
+  pendingPatch.lastTimeMode = next;
+  queueSave();
+}
+// À l'ouverture de la page, on montre l'outil qui tourne (s'il y en a un).
+function timeAutoSync(){
+  if(activeTool === 'timer' || activeTool === 'stopwatch') setTimeMode(activeTool, false);
+}
+document.querySelectorAll('#time-toggle .seg-btn').forEach((btn) => {
+  btn.addEventListener('click', () => { playSound('tick'); setTimeMode(btn.dataset.timeMode); });
+});
 
 /* ==================== BOUTON PAUSE DEPUIS LE MODE COMPACT ==================== */
 $('run-pause').addEventListener('click', (e) => {
@@ -1754,8 +1801,10 @@ window.api.getSettings().then((s) => {
   settings.pinnedPages = normalizePinnedPages(settings.pinnedPages);
   window.__notchSettings = settings;
   pinnedPages = [...settings.pinnedPages];
-  const savedTab = pageDefinition(settings.lastTab) ? settings.lastTab : 'pomodoro';
+  const savedTab = pageDefinition(settings.lastTab) ? resolvePageId(settings.lastTab) : 'pomodoro';
   if(savedTab !== currentTab) selectTab(savedTab, false);
+  setTimeMode(settings.lastTimeMode === 'timer' ? 'timer' : 'stopwatch', false);
+  if(savedTab === 'time') timeAutoSync();
   renderPinnedPages();
   applyAppearance();
   body.classList.toggle('reduce-motion', !!settings.reduceMotion);
