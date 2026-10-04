@@ -1201,7 +1201,7 @@ window.openSettingsAt = function openSettingsAt(groupId, focusId){
     const group = $(groupId);
     const scroller = document.querySelector('.settings-scroll');
     if(group && scroller){
-      // On règle scrollTop nous-mêmes : scrollIntoView ferait aussi défiler la
+      // On règle scrollTop nous-mêmes : la méthode native de défilement ferait aussi défiler la
       // capsule (overflow:hidden) et décalerait toute la vue.
       scroller.scrollTop += group.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 2;
     }

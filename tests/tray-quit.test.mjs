@@ -10,7 +10,7 @@ const app = read('../renderer/app.js');
 const css = read('../renderer/style.css');
 
 test('tray: main builds the icon with Open / Settings / Quit and cleans up on quit', () => {
-  assert.match(main, /Tray, Menu \} = require\('electron'\)/);
+  assert.match(main, /Tray, Menu(?:, \w+)* \} = require\('electron'\)/);
   assert.match(main, /new Tray\(/);
   assert.match(main, /label: 'Open'/);
   assert.match(main, /label: 'Settings'/);
